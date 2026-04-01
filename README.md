@@ -1,16 +1,16 @@
 # SoManyLemons MCP
 
-AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more — directly from Claude Code, Cursor, or any MCP-compatible client.
+AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more directly from Claude Code, Cursor, or any MCP-compatible client.
 
-## Install
+## Quick Install (Claude Code Plugin)
 
-```bash
-pip install somanylemons-mcp
+```
+/plugin install somanylemons
 ```
 
-## Setup
+That's it. You'll be prompted for your API key on first use.
 
-### 1. Get a free API key
+No API key yet? Get one free:
 
 ```bash
 curl -X POST https://somanylemons.com/api/v1/signup \
@@ -18,9 +18,19 @@ curl -X POST https://somanylemons.com/api/v1/signup \
   -d '{"email": "you@example.com"}'
 ```
 
+## Manual Install
+
+If you prefer manual setup:
+
+### 1. Install the package
+
+```bash
+pip install somanylemons-mcp
+```
+
 ### 2. Add to Claude Code
 
-Add to your `~/.claude.json` (or project `.claude.json`):
+Add to your project `.mcp.json` or `~/.claude.json`:
 
 ```json
 {
@@ -35,13 +45,45 @@ Add to your `~/.claude.json` (or project `.claude.json`):
 }
 ```
 
-### 3. Install skills (optional but recommended)
+### 3. Install skills (optional)
 
 ```bash
 sml-mcp --install-skills
 ```
 
-This copies workflow prompts to `~/.claude/commands/` so you can run `/make-me-famous`, `/repurpose`, etc.
+Copies workflow prompts to `~/.claude/commands/` so you can run `/make-me-famous`, `/repurpose`, etc.
+
+## Remote MCP (no install)
+
+Skip pip entirely. Add this to your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "somanylemons": {
+      "type": "url",
+      "url": "https://mcp.somanylemons.com/sse",
+      "headers": {
+        "X-API-Key": "sml_your_key_here"
+      }
+    }
+  }
+}
+```
+
+This gives you all the tools but not the slash commands.
+
+## Skills and Commands
+
+| Command | What it does |
+|---------|-------------|
+| `/lemons` | All-in-one content creator. Describe what you want and it happens. |
+| `/make-me-famous` | Full pipeline: recording to branded reels + LinkedIn posts, scored and ready |
+| `/repurpose` | One recording to every format: reels, quotes, written posts |
+| `/content-week` | Generate a Monday to Friday LinkedIn content calendar |
+| `/brand-setup` | Interactive brand profile creation |
+| `/score-my-post` | Score a draft, get feedback, auto-improve |
+| `/leemon` | Chat with LeeMon, your AI content strategist |
 
 ## Tools
 
@@ -65,18 +107,6 @@ This copies workflow prompts to `~/.claude/commands/` so you can run `/make-me-f
 | `list_jobs` | List recent render jobs |
 | `get_usage` | Check render quota and billing usage |
 | `list_plans` | View available pricing tiers |
-
-## Skills
-
-After `sml-mcp --install-skills`:
-
-| Command | What it does |
-|---------|-------------|
-| `/make-me-famous` | Full pipeline: recording → branded reels + LinkedIn posts, scored and ready |
-| `/repurpose` | One recording → every format: reels, quotes, written posts |
-| `/content-week` | Generate a Monday–Friday LinkedIn content calendar |
-| `/brand-setup` | Interactive brand profile creation |
-| `/score-my-post` | Score a draft, get feedback, auto-improve |
 
 ## Caption Styles
 
@@ -108,6 +138,28 @@ Transcription, quote extraction, content writing, and scoring are **free and unl
 |----------|---------|-------------|
 | `SML_API_KEY` | (required) | Your API key (`sml_xxxxx`) |
 | `SML_API_URL` | `https://somanylemons.com` | API base URL |
+
+## Plugin Structure
+
+```
+somanylemons-mcp/
+├── .claude-plugin/
+│   └── plugin.json          # Plugin manifest
+├── skills/
+│   └── lemons/
+│       └── SKILL.md         # /lemons all-in-one skill
+├── commands/
+│   ├── brand-setup.md       # /brand-setup
+│   ├── content-week.md      # /content-week
+│   ├── leemon.md            # /leemon
+│   ├── make-me-famous.md    # /make-me-famous
+│   ├── repurpose.md         # /repurpose
+│   └── score-my-post.md     # /score-my-post
+├── src/                     # MCP server source
+├── pyproject.toml
+├── README.md
+└── LICENSE
+```
 
 ## License
 
