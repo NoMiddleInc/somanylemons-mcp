@@ -13,7 +13,7 @@ That's it. You'll be prompted for your API key on first use.
 No API key yet? Get one free:
 
 ```bash
-curl -X POST https://somanylemons.com/api/v1/signup \
+curl -X POST https://api.somanylemons.com/api/v1/signup \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
 ```
@@ -137,7 +137,7 @@ Transcription, quote extraction, content writing, and scoring are **free and unl
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SML_API_KEY` | (required) | Your API key (`sml_xxxxx`) |
-| `SML_API_URL` | `https://somanylemons.com` | API base URL |
+| `SML_API_URL` | `https://api.somanylemons.com` | API base URL |
 
 ## Plugin Structure
 

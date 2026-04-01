@@ -43,7 +43,7 @@ Ask: "Got an SML API key? Paste it here. No key? Give me your email and I'll cre
 - If they give an email: run this curl to sign up:
 
 ```bash
-curl -s -X POST https://somanylemons.com/api/v1/signup \
+curl -s -X POST https://api.somanylemons.com/api/v1/signup \
   -H "Content-Type: application/json" \
   -d '{"email": "USER_EMAIL"}'
 ```

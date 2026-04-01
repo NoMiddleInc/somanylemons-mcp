@@ -8,7 +8,7 @@ extract quotes, and more.
 
 Usage:
     sml-mcp --api-key sml_xxxxx
-    sml-mcp --api-url https://somanylemons.com --api-key sml_xxxxx
+    sml-mcp --api-url https://api.somanylemons.com --api-key sml_xxxxx
 
 Or via environment variables:
     SML_API_KEY=sml_xxxxx sml-mcp
