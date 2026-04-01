@@ -31,10 +31,19 @@ except ImportError:
     )
     sys.exit(1)
 
+import contextvars
+
 import httpx
 
-API_URL = os.environ.get("SML_API_URL", "https://somanylemons.com")
+API_URL = os.environ.get("SML_API_URL", "https://api.somanylemons.com")
 API_KEY = os.environ.get("SML_API_KEY", "")
+
+# Per-session API key for the remote (multi-tenant) server.
+# Each SSE connection sets its own key via contextvars so concurrent
+# sessions never share or overwrite each other's credentials.
+_session_api_key: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "session_api_key", default=""
+)
 
 CAPTION_STYLES = [
     "LEMON", "VITAMIN_C", "PLAIN", "SPOTLIGHT",
@@ -43,8 +52,9 @@ CAPTION_STYLES = [
 
 
 def get_headers():
+    key = _session_api_key.get() or API_KEY
     return {
-        "X-API-Key": API_KEY,
+        "X-API-Key": key,
         "Content-Type": "application/json",
     }
 

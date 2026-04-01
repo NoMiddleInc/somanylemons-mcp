@@ -1,0 +1,35 @@
+{
+  "defaults": {
+    "region": "us-central1",
+    "resources": {
+      "memory": "512Mi",
+      "cpu": "1",
+      "concurrency": 80,
+      "timeout": 300,
+      "min_instances": 0,
+      "max_instances": 5
+    }
+  },
+  "environments": {
+    "prod": {
+      "project_id": "b2bai-451415",
+      "service_name": "somanylemons-mcp",
+      "api_url": "https://api.somanylemons.com",
+      "artifact_registry": "us-central1-docker.pkg.dev/b2bai-451415/campaign",
+      "resources": {
+        "min_instances": 1,
+        "max_instances": 10
+      }
+    },
+    "qas": {
+      "project_id": "somanylemons-qas",
+      "service_name": "somanylemons-mcp-qas",
+      "api_url": "https://api.qas.somanylemons.com",
+      "artifact_registry": "us-central1-docker.pkg.dev/somanylemons-qas/campaign",
+      "resources": {
+        "min_instances": 0,
+        "max_instances": 3
+      }
+    }
+  }
+}
