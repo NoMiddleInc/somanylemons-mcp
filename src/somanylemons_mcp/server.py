@@ -621,10 +621,14 @@ async def call_tool(name: str, arguments: dict):
         job_id = arguments.pop("id", "")
         path = path.replace("{id}", job_id)
 
+    # Rendering endpoints need longer timeouts (image/video generation)
+    _SLOW_TOOLS = {"create_image_quote", "create_reels", "transcribe"}
+    timeout = 120 if name in _SLOW_TOOLS else 30
+
     if method == "GET":
-        return await _api_call("GET", path, params=arguments if arguments else None)
+        return await _api_call("GET", path, params=arguments if arguments else None, timeout=timeout)
     else:
-        return await _api_call("POST", path, payload=arguments)
+        return await _api_call("POST", path, payload=arguments, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
