@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "somanylemons": {
+      "type": "url",
+      "url": "https://mcp.somanylemons.com/sse",
+      "headers": {
+        "X-API-Key": "${SML_API_KEY}"
+      }
+    }
+  }
+}

@@ -1,20 +1,13 @@
 {
   "name": "somanylemons",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-powered content marketing. Create branded video reels, LinkedIn posts, image quotes, and more from your recordings and ideas.",
-  "author": "So Many Lemons",
+  "author": {
+    "name": "So Many Lemons",
+    "email": "support@somanylemons.com"
+  },
   "homepage": "https://somanylemons.com",
   "repository": "https://github.com/NoMiddleInc/somanylemons-mcp",
   "license": "MIT",
-  "keywords": ["content", "video", "linkedin", "reels", "marketing", "ai", "mcp"],
-  "mcp": {
-    "servers": {
-      "somanylemons": {
-        "command": "sml-mcp",
-        "env": {
-          "SML_API_KEY": "${SML_API_KEY}"
-        }
-      }
-    }
-  }
+  "keywords": ["content", "video", "linkedin", "reels", "marketing", "ai", "mcp"]
 }
