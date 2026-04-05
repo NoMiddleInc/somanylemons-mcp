@@ -517,6 +517,20 @@ async def list_tools():
             },
         ),
 
+        # --- Account ---
+        Tool(
+            name="get_account",
+            description=(
+                "Return the identity of the currently connected account. "
+                "Shows email, organization name, plan/tier, and a masked "
+                "API key prefix. Use this to verify which account is active."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+
     ]
 
 
@@ -539,6 +553,7 @@ TOOL_ROUTES = {
     "create_draft": ("POST", "/api/v1/drafts"),
     "list_drafts": ("GET", "/api/v1/drafts"),
     "get_usage": ("GET", "/api/v1/usage"),
+    "get_account": ("GET", "/api/v1/account"),
     "transcribe": ("POST", "/api/v1/transcribe"),
     "list_plans": ("GET", "/api/v1/developer/plans/"),
     "list_jobs": ("GET", "/api/v1/jobs"),
