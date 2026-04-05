@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "somanylemons-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "MCP server for SoManyLemons — AI-powered video reels, LinkedIn content, and brand management via Claude Code, Cursor, or any MCP client."
 readme = "README.md"
 license = "MIT"
