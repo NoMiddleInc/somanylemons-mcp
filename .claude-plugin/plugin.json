@@ -1,0 +1,11 @@
+{
+  "name": "somanylemons",
+  "description": "AI-powered video reels, LinkedIn posts, and image quotes. Record once, get branded content for every platform.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SoManyLemons"
+  },
+  "homepage": "https://somanylemons.com",
+  "repository": "https://github.com/NoMiddleInc/somanylemons-mcp",
+  "license": "MIT"
+}
