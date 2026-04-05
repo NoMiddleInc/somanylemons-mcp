@@ -17,8 +17,8 @@ Save the `sml_` key from the response. It won't be shown again.
 ### 2. Add to Claude Code
 
 ```bash
-claude mcp add --transport sse somanylemons \
-  https://mcp.somanylemons.com/sse \
+claude mcp add --transport http somanylemons \
+  https://mcp.somanylemons.com/mcp \
   --header "X-API-Key: sml_YOUR_KEY"
 ```
 
@@ -103,7 +103,7 @@ If you prefer to edit your config file directly instead of using `claude mcp add
   "mcpServers": {
     "somanylemons": {
       "type": "url",
-      "url": "https://mcp.somanylemons.com/sse",
+      "url": "https://mcp.somanylemons.com/mcp",
       "headers": {
         "X-API-Key": "sml_your_key_here"
       }
