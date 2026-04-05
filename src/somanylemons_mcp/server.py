@@ -632,32 +632,6 @@ async def call_tool(name: str, arguments: dict):
 
 
 # ---------------------------------------------------------------------------
-# Skills installer
-# ---------------------------------------------------------------------------
-
-def _install_skills():
-    """Copy bundled skill files to ~/.claude/commands/."""
-    from importlib.resources import files
-
-    skills_source = files("somanylemons_mcp") / "skills"
-    target_dir = os.path.expanduser("~/.claude/commands")
-    os.makedirs(target_dir, exist_ok=True)
-
-    installed = []
-    for skill_file in skills_source.iterdir():
-        if skill_file.name.endswith(".md"):
-            dest = os.path.join(target_dir, skill_file.name)
-            with open(dest, "w") as f:
-                f.write(skill_file.read_text())
-            installed.append(skill_file.name)
-
-    print(f"Installed {len(installed)} skills to {target_dir}:")
-    for name in sorted(installed):
-        print(f"  /{name.replace('.md', '')}")
-    return
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -672,19 +646,10 @@ def main():
     parser = argparse.ArgumentParser(description="SoManyLemons MCP Server")
     parser.add_argument("--api-url", default=API_URL, help="Base URL of the SML API")
     parser.add_argument("--api-key", default=API_KEY, help="API key (sml_xxxxx)")
-    parser.add_argument(
-        "--install-skills",
-        action="store_true",
-        help="Install Claude Code skills to ~/.claude/commands/ and exit",
-    )
     args = parser.parse_args()
 
     API_URL = args.api_url.rstrip("/")
     API_KEY = args.api_key
-
-    if args.install_skills:
-        _install_skills()
-        return
 
     if not API_KEY:
         print("Error: API key required. Set SML_API_KEY or use --api-key", file=sys.stderr)
