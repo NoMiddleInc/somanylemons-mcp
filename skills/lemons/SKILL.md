@@ -52,7 +52,17 @@ The response contains the raw API key. Show it to the user and warn them to save
 
 **Step 2: Configure remote MCP**
 
-Add this to the user's Claude Code MCP settings:
+Run this command to register the MCP server (replace `sml_xxxxx` with their key):
+
+```bash
+claude mcp add --transport http somanylemons \
+  https://mcp.somanylemons.com/mcp \
+  --header "X-API-Key: sml_xxxxx"
+```
+
+Tell the user to restart Claude Code for the tools to become available.
+
+If the user explicitly asks for manual JSON config instead, they can add this to their `.claude.json`:
 
 ```json
 {
@@ -67,8 +77,6 @@ Add this to the user's Claude Code MCP settings:
   }
 }
 ```
-
-Tell the user to restart Claude Code or reload MCP servers for the tools to become available.
 
 **Step 3: Brand setup (ask but don't block)**
 
