@@ -59,7 +59,7 @@ Add this to the user's Claude Code MCP settings:
   "mcpServers": {
     "somanylemons": {
       "type": "url",
-      "url": "https://mcp.somanylemons.com/sse",
+      "url": "https://mcp.somanylemons.com/mcp",
       "headers": {
         "X-API-Key": "sml_xxxxx"
       }
