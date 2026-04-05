@@ -69,8 +69,16 @@ async def _api_call(method, path, payload=None, params=None, timeout=30):
     async with httpx.AsyncClient() as client:
         if method == "GET":
             resp = await client.get(url, headers=get_headers(), params=params, timeout=timeout)
+        elif method == "PUT":
+            resp = await client.put(url, json=payload or {}, headers=get_headers(), timeout=timeout)
+        elif method == "DELETE":
+            resp = await client.delete(url, headers=get_headers(), params=params, timeout=timeout)
         else:
             resp = await client.post(url, json=payload or {}, headers=get_headers(), timeout=timeout)
+
+    # DELETE with 204 No Content
+    if resp.status_code == 204:
+        return [TextContent(type="text", text=json.dumps({"deleted": True}, indent=2))]
 
     data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"raw": resp.text}
 
@@ -381,6 +389,72 @@ async def list_tools():
                 "required": ["name", "primary_color", "secondary_color"],
             },
         ),
+        Tool(
+            name="update_brand",
+            description=(
+                "Update an existing brand profile. Pass only the fields you want to change. "
+                "Use list_brands to get the brand ID first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Brand profile ID to update",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Updated brand name",
+                    },
+                    "primary_color": {
+                        "type": "string",
+                        "description": "Updated primary color as hex",
+                    },
+                    "secondary_color": {
+                        "type": "string",
+                        "description": "Updated secondary color as hex",
+                    },
+                    "accent_color": {
+                        "type": "string",
+                        "description": "Updated accent color as hex",
+                    },
+                    "background_color": {
+                        "type": "string",
+                        "description": "Updated background color as hex",
+                    },
+                    "text_color": {
+                        "type": "string",
+                        "description": "Updated text color as hex",
+                    },
+                    "font_family": {
+                        "type": "string",
+                        "description": "Updated font family name",
+                    },
+                    "logo_url": {
+                        "type": "string",
+                        "description": "Updated logo URL",
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
+        Tool(
+            name="delete_brand",
+            description=(
+                "Delete a brand profile. This cannot be undone. "
+                "Use list_brands to get the brand ID first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Brand profile ID to delete",
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
 
         # --- Drafts ---
         Tool(
@@ -424,6 +498,92 @@ async def list_tools():
                         "description": "Max results (default 20, max 100)",
                     },
                 },
+            },
+        ),
+        Tool(
+            name="update_draft",
+            description=(
+                "Update an existing draft. Change the caption, attach media, "
+                "or update status. Use list_drafts to get the draft ID."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Draft ID to update",
+                    },
+                    "caption": {
+                        "type": "string",
+                        "description": "Updated caption text",
+                    },
+                    "job_id": {
+                        "type": "string",
+                        "description": "Render job ID to attach or replace media",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Move draft to a new status (draft, queued)",
+                        "enum": ["draft", "queued"],
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
+        Tool(
+            name="delete_draft",
+            description=(
+                "Delete a draft from the content queue. This cannot be undone. "
+                "Use list_drafts to get the draft ID."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Draft ID to delete",
+                    },
+                },
+                "required": ["id"],
+            },
+        ),
+        Tool(
+            name="schedule_draft",
+            description=(
+                "Schedule a draft for publishing at a specific date and time. "
+                "The draft must exist. Use list_drafts to find draft IDs."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Draft ID to schedule",
+                    },
+                    "scheduled_at": {
+                        "type": "string",
+                        "description": "ISO 8601 datetime for publishing (e.g. '2026-04-10T09:00:00Z')",
+                    },
+                },
+                "required": ["id", "scheduled_at"],
+            },
+        ),
+        Tool(
+            name="duplicate_draft",
+            description=(
+                "Duplicate an existing draft to use as a starting point. "
+                "Creates a new draft with the same caption and media. "
+                "Useful for creating variations of high-scoring posts."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "Draft ID to duplicate",
+                    },
+                },
+                "required": ["id"],
             },
         ),
 
@@ -530,6 +690,73 @@ async def list_tools():
                 "properties": {},
             },
         ),
+        Tool(
+            name="update_account",
+            description=(
+                "Update account profile settings like organization name "
+                "or notification preferences."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "organization": {
+                        "type": "string",
+                        "description": "Organization or company name",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Display name",
+                    },
+                },
+            },
+        ),
+
+        # --- Search ---
+        Tool(
+            name="search_transcripts",
+            description=(
+                "Search across all your transcripts by keyword or topic. "
+                "Returns matching excerpts with job IDs and timestamps. "
+                "Use this to find what someone said about a specific topic."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (keyword, phrase, or topic)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default 10)",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+
+        # --- Downloads ---
+        Tool(
+            name="download_clip",
+            description=(
+                "Get a direct download URL for a specific rendered clip from a completed job. "
+                "Use check_job_status to see available clips first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string",
+                        "description": "The render job ID",
+                    },
+                    "clip_index": {
+                        "type": "integer",
+                        "description": "Index of the clip to download (0-based). Default: 0 (first clip).",
+                    },
+                },
+                "required": ["job_id"],
+            },
+        ),
 
     ]
 
@@ -539,25 +766,43 @@ async def list_tools():
 # ---------------------------------------------------------------------------
 
 TOOL_ROUTES = {
+    # Content creation
     "create_reels": ("POST", "/api/v1/clip"),
     "check_job_status": ("GET", "/api/v1/clip/{id}"),
-    "create_upload_session": ("POST", "/api/v1/uploads/resumable"),
-    "check_upload_status": ("POST", "/api/v1/uploads/resumable/status"),
+    "create_image_quote": ("POST", "/api/v1/image-quote"),
+    "transcribe": ("POST", "/api/v1/transcribe"),
+    # Content writing
     "generate_content": ("POST", "/api/v1/write/generate"),
     "score_content": ("POST", "/api/v1/write/score"),
     "rewrite_content": ("POST", "/api/v1/write/rewrite"),
     "extract_quotes": ("POST", "/api/v1/extract-clips"),
-    "list_templates": ("GET", "/api/v1/templates"),
+    # Uploads
+    "create_upload_session": ("POST", "/api/v1/uploads/resumable"),
+    "check_upload_status": ("POST", "/api/v1/uploads/resumable/status"),
+    # Brands
     "list_brands": ("GET", "/api/v1/brands"),
     "create_brand": ("POST", "/api/v1/brands"),
+    "update_brand": ("PUT", "/api/v1/brands/{id}"),
+    "delete_brand": ("DELETE", "/api/v1/brands/{id}"),
+    # Drafts
     "create_draft": ("POST", "/api/v1/drafts"),
     "list_drafts": ("GET", "/api/v1/drafts"),
+    "update_draft": ("PUT", "/api/v1/drafts/{id}"),
+    "delete_draft": ("DELETE", "/api/v1/drafts/{id}"),
+    "schedule_draft": ("POST", "/api/v1/drafts/{id}/schedule"),
+    "duplicate_draft": ("POST", "/api/v1/drafts/{id}/duplicate"),
+    # Jobs
+    "list_jobs": ("GET", "/api/v1/jobs"),
+    "download_clip": ("GET", "/api/v1/clip/{job_id}/download"),
+    # Discovery
+    "list_templates": ("GET", "/api/v1/templates"),
+    "list_plans": ("GET", "/api/v1/developer/plans/"),
+    # Account & usage
     "get_usage": ("GET", "/api/v1/usage"),
     "get_account": ("GET", "/api/v1/account"),
-    "transcribe": ("POST", "/api/v1/transcribe"),
-    "list_plans": ("GET", "/api/v1/developer/plans/"),
-    "list_jobs": ("GET", "/api/v1/jobs"),
-    "create_image_quote": ("POST", "/api/v1/image-quote"),
+    "update_account": ("PUT", "/api/v1/account"),
+    # Search
+    "search_transcripts": ("GET", "/api/v1/transcripts/search"),
 }
 
 
@@ -630,11 +875,12 @@ async def call_tool(name: str, arguments: dict):
 
     method, path_template = route
 
-    # Handle path parameters (e.g., {id})
+    # Handle path parameters (e.g., {id}, {job_id})
     path = path_template
     if "{id}" in path:
-        job_id = arguments.pop("id", "")
-        path = path.replace("{id}", job_id)
+        path = path.replace("{id}", str(arguments.pop("id", "")))
+    if "{job_id}" in path:
+        path = path.replace("{job_id}", str(arguments.pop("job_id", "")))
 
     # Rendering endpoints need longer timeouts (image/video generation)
     _SLOW_TOOLS = {"create_image_quote", "create_reels", "transcribe"}
@@ -642,6 +888,10 @@ async def call_tool(name: str, arguments: dict):
 
     if method == "GET":
         return await _api_call("GET", path, params=arguments if arguments else None, timeout=timeout)
+    elif method == "DELETE":
+        return await _api_call("DELETE", path, timeout=timeout)
+    elif method == "PUT":
+        return await _api_call("PUT", path, payload=arguments, timeout=timeout)
     else:
         return await _api_call("POST", path, payload=arguments, timeout=timeout)
 

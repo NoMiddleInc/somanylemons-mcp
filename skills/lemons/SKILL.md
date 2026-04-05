@@ -481,25 +481,42 @@ These are the tools available when the SML MCP server is connected:
 
 | Tool | What it does |
 |---|---|
+| **Content Creation** | |
 | `create_reels` | Submit a recording URL for branded clip creation (async) |
 | `check_job_status` | Poll processing status by job ID |
-| `upload_file` | Upload a local file (image/video/audio, max 50MB) to get a hosted URL |
-| `create_upload_session` | Create resumable upload session for large files |
-| `check_upload_status` | Check resumable upload progress |
+| `create_image_quote` | Render a branded image quote from text, optionally attach to a draft |
+| `transcribe` | Transcribe a video/audio file with word-level timestamps |
+| `download_clip` | Get direct download URL for a specific rendered clip |
+| **Content Writing** | |
 | `generate_content` | Generate a LinkedIn post from a topic |
 | `score_content` | Score a post for engagement (0-100) |
 | `rewrite_content` | AI-rewrite a post with optional feedback |
 | `extract_quotes` | Extract quotable lines with Squeeze Scores |
-| `list_templates` | List available video/image templates |
+| **Uploads** | |
+| `upload_file` | Upload a local file (image/video/audio, max 50MB) to get a hosted URL |
+| `create_upload_session` | Create resumable upload session for large files |
+| `check_upload_status` | Check resumable upload progress |
+| **Brands** | |
 | `list_brands` | List brand profiles |
 | `create_brand` | Create a brand profile (name, colors, logo_url) |
+| `update_brand` | Update an existing brand profile |
+| `delete_brand` | Delete a brand profile |
+| **Drafts** | |
 | `create_draft` | Add a post to the content queue |
 | `list_drafts` | List drafts in the queue |
+| `update_draft` | Update a draft's caption, media, or status |
+| `delete_draft` | Remove a draft from the queue |
+| `schedule_draft` | Schedule a draft for a specific publish date/time |
+| `duplicate_draft` | Clone a draft as a starting point for variations |
+| **Jobs & Search** | |
 | `list_jobs` | List recent render jobs with status and results |
-| `get_usage` | Check render quota and usage stats |
+| `search_transcripts` | Search across all transcripts by keyword or topic |
+| **Account & Config** | |
 | `get_account` | Return connected account identity (email, org, tier, key prefix) |
-| `create_image_quote` | Render a branded image quote from text, optionally attach to a draft |
-| `transcribe` | Transcribe a video/audio file with word-level timestamps |
+| `update_account` | Update account profile (org name, display name) |
+| `get_usage` | Check render quota and usage stats |
+| `list_templates` | List available video/image templates |
+| `list_plans` | View available pricing tiers |
 
 ## Error Handling
 
