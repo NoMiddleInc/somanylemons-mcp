@@ -13,17 +13,15 @@ Create branded video reels, LinkedIn posts, and image quotes through conversatio
 
 Every time `/lemons` is invoked, BEFORE responding to the user, silently load context by calling these tools in parallel:
 
-1. `get_account` - connected account identity (email, org, tier, key prefix)
-2. `list_jobs` (limit: 10) - their recent recordings and transcripts
-3. `list_brands` - their brand profiles
-4. `list_drafts` (limit: 10) - their content queue
+1. `list_jobs` (limit: 10) - their recent recordings and transcripts
+2. `list_brands` - their brand profiles
+3. `list_drafts` (limit: 10) - their content queue
 
 Store this context mentally. Use it to:
-- Know which account is connected (email, org, tier)
 - Resolve references like "my latest recording," "that video from yesterday," "the one about AI"
 - Know if they have a brand set up (skip brand setup prompts if they do)
 - Know what's already in their queue (avoid duplicate topics, spot gaps)
-- Answer "what do I have?" or "who am I?" without extra calls
+- Answer "what do I have?" without extra calls
 
 Do NOT dump this info to the user unprompted. Just know it. Use it when relevant.
 
@@ -33,7 +31,7 @@ When `/lemons` is invoked, check if the SML MCP tools are available (look for to
 
 ### MCP tools ARE available
 
-Run the Context Preload (which now includes `get_account`), then route directly to whatever the user asked for.
+Run the Context Preload, then route directly to whatever the user asked for.
 
 ### MCP tools are NOT available
 
@@ -54,7 +52,7 @@ The response contains the raw API key. Show it to the user and warn them to save
 
 **Step 2: Configure remote MCP**
 
-Run this command to register the MCP server (replace `sml_xxxxx` with their key):
+Tell the user to run this exact command in Claude Code's terminal:
 
 ```bash
 claude mcp add --transport http somanylemons \
@@ -62,9 +60,11 @@ claude mcp add --transport http somanylemons \
   --header "X-API-Key: sml_xxxxx"
 ```
 
-Tell the user to restart Claude Code for the tools to become available.
+This writes the MCP server to Claude Code's real config automatically.
 
-If the user explicitly asks for manual JSON config instead, they can add this to their `.claude.json`:
+Then tell them to restart Claude Code or reload MCP servers for the tools to become available.
+
+Only if they specifically ask for manual config, show this fallback:
 
 ```json
 {
@@ -125,7 +125,6 @@ Parse intent from the user's natural language message after `/lemons`.
 | "brand", "colors", "logo", "setup", "branding" | Brand setup |
 | "status", "job", "check", a UUID | Job status check |
 | "usage", "quota", "renders left", "how many" | Usage check |
-| "who am I", "which account", "my account", "my email" | Account identity check |
 | "plan my content", "content strategy", "plan next week" | Content planning |
 
 When showing the capabilities menu, use this:
@@ -465,58 +464,30 @@ Call `get_usage`. Show:
 - Tier name
 - If near the limit, mention they can upgrade.
 
-## Account Identity Check
-
-Call `get_account`. Show:
-- Email address
-- Organization / company name (if set)
-- Current plan/tier
-- Masked API key prefix (e.g. `sml_-hRO...`)
-
-This is the authoritative way to confirm which account is connected.
-
 ## Available MCP Tools
 
 These are the tools available when the SML MCP server is connected:
 
 | Tool | What it does |
 |---|---|
-| **Content Creation** | |
 | `create_reels` | Submit a recording URL for branded clip creation (async) |
 | `check_job_status` | Poll processing status by job ID |
-| `create_image_quote` | Render a branded image quote from text, optionally attach to a draft |
-| `transcribe` | Transcribe a video/audio file with word-level timestamps |
-| `download_clip` | Get direct download URL for a specific rendered clip |
-| **Content Writing** | |
+| `upload_file` | Upload a local file (image/video/audio, max 50MB) to get a hosted URL |
+| `create_upload_session` | Create resumable upload session for large files |
+| `check_upload_status` | Check resumable upload progress |
 | `generate_content` | Generate a LinkedIn post from a topic |
 | `score_content` | Score a post for engagement (0-100) |
 | `rewrite_content` | AI-rewrite a post with optional feedback |
 | `extract_quotes` | Extract quotable lines with Squeeze Scores |
-| **Uploads** | |
-| `upload_file` | Upload a local file (image/video/audio, max 50MB) to get a hosted URL |
-| `create_upload_session` | Create resumable upload session for large files |
-| `check_upload_status` | Check resumable upload progress |
-| **Brands** | |
+| `list_templates` | List available video/image templates |
 | `list_brands` | List brand profiles |
 | `create_brand` | Create a brand profile (name, colors, logo_url) |
-| `update_brand` | Update an existing brand profile |
-| `delete_brand` | Delete a brand profile |
-| **Drafts** | |
 | `create_draft` | Add a post to the content queue |
 | `list_drafts` | List drafts in the queue |
-| `update_draft` | Update a draft's caption, media, or status |
-| `delete_draft` | Remove a draft from the queue |
-| `schedule_draft` | Schedule a draft for a specific publish date/time |
-| `duplicate_draft` | Clone a draft as a starting point for variations |
-| **Jobs & Search** | |
 | `list_jobs` | List recent render jobs with status and results |
-| `search_transcripts` | Search across all transcripts by keyword or topic |
-| **Account & Config** | |
-| `get_account` | Return connected account identity (email, org, tier, key prefix) |
-| `update_account` | Update account profile (org name, display name) |
 | `get_usage` | Check render quota and usage stats |
-| `list_templates` | List available video/image templates |
-| `list_plans` | View available pricing tiers |
+| `create_image_quote` | Render a branded image quote from text, optionally attach to a draft |
+| `transcribe` | Transcribe a video/audio file with word-level timestamps |
 
 ## Error Handling
 
