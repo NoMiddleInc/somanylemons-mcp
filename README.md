@@ -6,6 +6,14 @@ AI-powered content marketing via [Model Context Protocol](https://modelcontextpr
 
 ### 1. Get a free API key
 
+**Option A: Sign up on the website**
+
+1. Create an account at [somanylemons.com/signup](https://somanylemons.com/signup)
+2. Go to the [Developer Portal](https://somanylemons.com/developers/portal)
+3. Click **New Key**, give it a name, and copy your `sml_` key
+
+**Option B: Sign up via command line**
+
 ```bash
 curl -X POST https://api.somanylemons.com/api/v1/signup \
   -H "Content-Type: application/json" \
@@ -13,6 +21,8 @@ curl -X POST https://api.somanylemons.com/api/v1/signup \
 ```
 
 Save the `sml_` key from the response. It won't be shown again.
+
+You can always create and manage additional API keys from the [Developer Portal](https://somanylemons.com/developers/portal).
 
 ### 2. Add to Claude Code
 
