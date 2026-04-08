@@ -68,6 +68,13 @@ def _create_app() -> ASGIApp:
 
     async def app(scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http" and scope["path"] == "/mcp":
+            # Inject Accept header if missing so older clients don't get 406
+            headers = dict(scope.get("headers", []))
+            if b"accept" not in headers or b"text/event-stream" not in headers.get(b"accept", b""):
+                scope["headers"] = [
+                    (k, v) for k, v in scope["headers"] if k != b"accept"
+                ] + [(b"accept", b"application/json, text/event-stream")]
+
             request = Request(scope, receive)
             client_key = request.headers.get("x-api-key", "")
             if not client_key:
