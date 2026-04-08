@@ -25,6 +25,22 @@ Store this context mentally. Use it to:
 
 Do NOT dump this info to the user unprompted. Just know it. Use it when relevant.
 
+### Recording sources
+
+Each recording from `list_jobs` includes a `source` field:
+
+- `"web"` — uploaded through the web app or editor at somanylemons.com
+- `"api"` — created through this API/MCP (e.g. via `create_reels` in a previous session)
+
+When showing the user a list of recordings, **always include the source as a tag** so they can tell where it came from. Format:
+
+```
+1. **Recording title** [web] — duration · clip count · date
+2. **Other recording** [api] — duration · clip count · date
+```
+
+This avoids confusion when the user sees recordings in `/lemons` that don't match what they see in their web dashboard, or vice versa.
+
 ## Onboarding
 
 When `/lemons` is invoked, check if the SML MCP tools are available (look for tools like `create_reels`, `list_brands`, etc.).
@@ -180,8 +196,9 @@ Then: "What do you want to work on?"
 
 **"My latest recording" / "that video" / relative reference:**
 - Use the preloaded `list_jobs` data to resolve which recording they mean.
-- If ambiguous, show a numbered list of recent recordings and ask them to pick.
+- If ambiguous, show a numbered list of recent recordings (with the `[web]` / `[api]` source tag) and ask them to pick.
 - If clear (e.g., "latest" = most recent completed job), use it directly.
+- When listing options, always show the source tag so the user knows whether it came from the web app or from a previous API call.
 
 **Local file:**
 - If file size < 50MB: upload via `upload_file` tool. Use the returned URL.
