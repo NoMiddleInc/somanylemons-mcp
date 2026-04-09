@@ -25,21 +25,26 @@ Store this context mentally. Use it to:
 
 Do NOT dump this info to the user unprompted. Just know it. Use it when relevant.
 
-### Recording sources
+### Recording sources and ownership
 
-Each recording from `list_jobs` includes a `source` field:
+Each recording from `list_jobs` includes:
 
-- `"web"` — uploaded through the web app or editor at somanylemons.com
-- `"api"` — created through this API/MCP (e.g. via `create_reels` in a previous session)
+- `source` — `"web"` (uploaded through the web app/editor) or `"api"` (created via this API/MCP).
+- `uploaded_by` — `{id, name, email}` of the user who actually uploaded the recording. Different from the API key holder when the org has multiple members.
 
-When showing the user a list of recordings, **always include the source as a tag** so they can tell where it came from. Format:
+By default `list_jobs` returns recordings from the entire organization (matching what the web dashboard shows). Pass `owner=me` to scope to recordings uploaded under the API key's user.
+
+When showing the user a list of recordings, **always include the source tag and the uploader name** if there are recordings from multiple users. Format:
 
 ```
-1. **Recording title** [web] — duration · clip count · date
-2. **Other recording** [api] — duration · clip count · date
+1. **Recording title** [web] — Jane Doe · duration · clip count · date
+2. **Other recording** [api] — Jane Doe · duration · clip count · date
+3. **Teammate's recording** [web] — Bob Smith · duration · clip count · date
 ```
 
-This avoids confusion when the user sees recordings in `/lemons` that don't match what they see in their web dashboard, or vice versa.
+If all recordings belong to the same user (the common case for solo accounts), you can omit the uploader name and just keep the source tag.
+
+When the user says "my recordings" or seems confused that they see recordings from other org members, offer to filter by `owner=me`.
 
 ## Onboarding
 
