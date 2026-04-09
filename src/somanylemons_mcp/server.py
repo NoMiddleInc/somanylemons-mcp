@@ -619,6 +619,11 @@ async def list_tools():
                         "description": "Scope filter. 'me' returns only recordings uploaded by the API key's user. 'org' (default) returns all recordings from the organization.",
                         "enum": ["me", "org"],
                     },
+                    "source": {
+                        "type": "string",
+                        "description": "Filter by origin. 'web' = uploaded via web app, 'api' = created via this API/MCP, 'all' (default) = both.",
+                        "enum": ["web", "api", "all"],
+                    },
                 },
             },
         ),

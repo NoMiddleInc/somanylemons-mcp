@@ -37,7 +37,8 @@ When a parameter is needed but the user didn't specify it:
 | Caption style | Omit (system picks) | Never ask unprompted |
 | Source for reel | Use clips from the referenced job | Only if no job is referenced or identifiable |
 | Videogram vs audiogram | Both for video files, audiogram for audio | Never ask, just do both |
-| owner filter | `owner=me` | If they explicitly say "org" or "everyone's" |
+| owner filter | `owner=org` (matches web dashboard) | Use `owner=me` only if they say "my uploads" or "uploaded by me" |
+| source filter | Omit (shows all) | Use `source=web` if they say "from the web", `source=api` if they say "from the API" |
 | Limit | 10 | Never ask |
 
 ### 3. One-line rationale, then act
@@ -55,7 +56,7 @@ If you find yourself about to list 2+ questions or options, stop. Pick the best 
 
 Every time `/lemons` is invoked, BEFORE responding to the user, silently load context by calling these tools in parallel:
 
-1. `list_jobs` (limit: 10, owner: me) - their own recent recordings and transcripts
+1. `list_jobs` (limit: 10) - their recent recordings and transcripts
 2. `list_brands` - their brand profiles
 3. `list_drafts` (limit: 10) - their content queue
 
@@ -186,12 +187,12 @@ Parse loosely. Act on the strongest signal. Don't overthink it.
 | Signal | Action |
 |---|---|
 | No message, vague, "help" | Capabilities menu |
-| Any reference to their content ("uploads", "recordings", "my stuff", "list", "show me", "what do I have") | `list_jobs` with `owner=me` |
+| Any reference to their content ("uploads", "recordings", "my stuff", "list", "show me", "what do I have") | `list_jobs` |
 | Job number reference ("job #1110", "#1110", "that watermelon one") | `check_job_status` on that job |
 | "Make a reel/video/clip from #1234" | Use existing clips from that job → `create_reels` |
 | URL or file path | Reels workflow |
 | "Post", "write", "LinkedIn", "draft" | `generate_content` |
-| "From my latest recording", "use my latest" | Resolve from `list_jobs(owner=me)`, then route by format requested |
+| "From my latest recording", "use my latest" | Resolve from `list_jobs`, then route by format requested |
 | "Score", "rate", "review" | `score_content` or bulk scoring |
 | "Queue", "scheduled", "what's next" | `list_drafts` |
 | "Brand", "colors", "logo" | Brand setup |
