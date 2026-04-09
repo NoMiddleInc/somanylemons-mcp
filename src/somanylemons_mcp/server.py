@@ -614,6 +614,11 @@ async def list_tools():
                         "type": "integer",
                         "description": "Max results (default 20, max 100)",
                     },
+                    "owner": {
+                        "type": "string",
+                        "description": "Scope filter. 'me' returns only recordings uploaded by the API key's user. 'org' (default) returns all recordings from the organization.",
+                        "enum": ["me", "org"],
+                    },
                 },
             },
         ),
