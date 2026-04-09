@@ -25,6 +25,27 @@ Store this context mentally. Use it to:
 
 Do NOT dump this info to the user unprompted. Just know it. Use it when relevant.
 
+### Recording sources and ownership
+
+Each recording from `list_jobs` includes:
+
+- `source` — `"web"` (uploaded through the web app/editor) or `"api"` (created via this API/MCP).
+- `uploaded_by` — `{id, name, email}` of the user who actually uploaded the recording. Different from the API key holder when the org has multiple members.
+
+By default `list_jobs` returns recordings from the entire organization (matching what the web dashboard shows). Pass `owner=me` to scope to recordings uploaded under the API key's user.
+
+When showing the user a list of recordings, **always include the source tag and the uploader name** if there are recordings from multiple users. Format:
+
+```
+1. **Recording title** [web] — Jane Doe · duration · clip count · date
+2. **Other recording** [api] — Jane Doe · duration · clip count · date
+3. **Teammate's recording** [web] — Bob Smith · duration · clip count · date
+```
+
+If all recordings belong to the same user (the common case for solo accounts), you can omit the uploader name and just keep the source tag.
+
+When the user says "my recordings" or seems confused that they see recordings from other org members, offer to filter by `owner=me`.
+
 ## Onboarding
 
 When `/lemons` is invoked, check if the SML MCP tools are available (look for tools like `create_reels`, `list_brands`, etc.).
@@ -190,8 +211,9 @@ Then: "What do you want to work on?"
 
 **"My latest recording" / "that video" / relative reference:**
 - Use the preloaded `list_jobs` data to resolve which recording they mean.
-- If ambiguous, show a numbered list of recent recordings and ask them to pick.
+- If ambiguous, show a numbered list of recent recordings (with the `[web]` / `[api]` source tag) and ask them to pick.
 - If clear (e.g., "latest" = most recent completed job), use it directly.
+- When listing options, always show the source tag so the user knows whether it came from the web app or from a previous API call.
 
 **Local file:**
 - If file size < 50MB: upload via `upload_file` tool. Use the returned URL.

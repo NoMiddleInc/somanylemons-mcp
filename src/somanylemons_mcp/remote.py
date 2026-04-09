@@ -105,6 +105,9 @@ def main():
     args = parser.parse_args()
 
     _srv.API_URL = args.api_url.rstrip("/")
+    # Mark this process as a hosted/multi-tenant server. Tools that read from
+    # the local filesystem will be rejected explicitly (see server.call_tool).
+    _srv.REMOTE_MODE = True
 
     import uvicorn
     uvicorn.run(_create_app(), host=args.host, port=args.port, log_level="info")

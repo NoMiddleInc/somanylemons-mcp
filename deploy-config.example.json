@@ -1,6 +1,7 @@
 {
+  "_comment": "Copy this file to deploy-config.json and fill in your own GCP values. deploy-config.json is gitignored.",
   "defaults": {
-    "region": "us-central1",
+    "region": "YOUR_GCP_REGION",
     "resources": {
       "memory": "512Mi",
       "cpu": "1",
@@ -12,20 +13,20 @@
   },
   "environments": {
     "prod": {
-      "project_id": "b2bai-451415",
+      "project_id": "YOUR_GCP_PROJECT_ID",
       "service_name": "somanylemons-mcp",
-      "api_url": "https://api.somanylemons.com",
-      "artifact_registry": "us-central1-docker.pkg.dev/b2bai-451415/campaign",
+      "api_url": "https://api.example.com",
+      "artifact_registry": "YOUR_REGION-docker.pkg.dev/YOUR_PROJECT/YOUR_REPO",
       "resources": {
         "min_instances": 1,
         "max_instances": 10
       }
     },
     "qas": {
-      "project_id": "somanylemons-qas",
+      "project_id": "YOUR_QAS_PROJECT_ID",
       "service_name": "somanylemons-mcp-qas",
-      "api_url": "https://api.qas.somanylemons.com",
-      "artifact_registry": "us-central1-docker.pkg.dev/somanylemons-qas/campaign",
+      "api_url": "https://api.qas.example.com",
+      "artifact_registry": "YOUR_REGION-docker.pkg.dev/YOUR_QAS_PROJECT/YOUR_REPO",
       "resources": {
         "min_instances": 0,
         "max_instances": 3

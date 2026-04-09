@@ -45,6 +45,14 @@ _session_api_key: contextvars.ContextVar[str] = contextvars.ContextVar(
     "session_api_key", default=""
 )
 
+# Set to True by remote.py at startup. When True, tools that read from the
+# local filesystem (upload_file, file_path uploads) are explicitly rejected,
+# because the "local filesystem" of a hosted server is not the user's machine.
+REMOTE_MODE = False
+
+# Tools that require local filesystem access. These ONLY work in stdio mode.
+_LOCAL_FS_TOOLS = frozenset({"upload_file"})
+
 CAPTION_STYLES = [
     "LEMON", "VITAMIN_C", "PLAIN", "SPOTLIGHT",
     "GLITCH", "RANSOM", "WAVE", "BOUNCE",
@@ -853,8 +861,35 @@ async def _upload_file(file_path: str):
     return await _multipart_post("/api/v1/upload", file_path)
 
 
+def _reject_local_fs_tool(tool_name: str) -> list:
+    """Return an explicit error TextContent for tools that need a local filesystem.
+
+    These tools cannot work over a hosted MCP server: the file_path the user
+    provides refers to *their* machine, not the server's. The user must either
+    use a public URL, or run the MCP server locally via `pip install
+    somanylemons-mcp` + stdio transport.
+    """
+    return [TextContent(type="text", text=json.dumps({
+        "error": True,
+        "code": "local_filesystem_unavailable",
+        "detail": (
+            f"The '{tool_name}' tool reads from your local filesystem and is "
+            "only available when running the MCP server locally (stdio mode). "
+            "On the hosted server (mcp.somanylemons.com), pass a public URL "
+            "instead, or install the MCP server locally with "
+            "'pip install somanylemons-mcp' and configure it as a stdio server."
+        ),
+    }, indent=2))]
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
+    # In remote (hosted) mode, reject tools that require local filesystem access.
+    if REMOTE_MODE and name in _LOCAL_FS_TOOLS:
+        return _reject_local_fs_tool(name)
+    if REMOTE_MODE and name in {"create_reels", "transcribe"} and arguments.get("file_path"):
+        return _reject_local_fs_tool(f"{name} (file_path argument)")
+
     # Special handler for file uploads (multipart, not JSON)
     if name == "upload_file":
         return await _upload_file(arguments.get("file_path", ""))

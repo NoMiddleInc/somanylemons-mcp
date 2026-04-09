@@ -1,3 +1,10 @@
+# --- Internal deployment infrastructure ---
+# Keep GCP project IDs, regions, and registry paths out of the public repo.
+# Use deploy-config.example.json as a template; create your own deploy-config.json locally.
+deploy.sh
+deploy-config.json
+.env
+
 # Created by https://www.toptal.com/developers/gitignore/api/node,django,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=node,django,python
 
