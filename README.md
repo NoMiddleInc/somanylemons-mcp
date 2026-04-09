@@ -32,7 +32,19 @@ claude mcp add --transport http somanylemons \
   --header "X-API-Key: sml_YOUR_KEY"
 ```
 
-### 3. Use it
+### 3. Install the /lemons skill
+
+The MCP server provides the tools. The `/lemons` skill tells Claude how to use them. Install it:
+
+```bash
+mkdir -p .claude/skills/lemons
+curl -s https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/skills/lemons/SKILL.md \
+  -o .claude/skills/lemons/SKILL.md
+```
+
+### 4. Use it
+
+Restart Claude Code (or start a new conversation), then:
 
 ```
 /lemons

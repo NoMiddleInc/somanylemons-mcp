@@ -62,7 +62,17 @@ claude mcp add --transport http somanylemons \
 
 This writes the MCP server to Claude Code's real config automatically.
 
-Then tell them to restart Claude Code or reload MCP servers for the tools to become available.
+**Step 2b: Install the /lemons skill file**
+
+The MCP server provides the tools, but the `/lemons` slash command needs a local skill file. Install it:
+
+```bash
+mkdir -p .claude/skills/lemons
+curl -s https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/skills/lemons/SKILL.md \
+  -o .claude/skills/lemons/SKILL.md
+```
+
+Then tell them to restart Claude Code or start a new conversation for both the MCP tools and `/lemons` command to become available.
 
 Only if they specifically ask for manual config, show this fallback:
 
