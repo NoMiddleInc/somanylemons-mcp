@@ -37,7 +37,6 @@ When a parameter is needed but the user didn't specify it:
 | Caption style | Omit (system picks) | Never ask unprompted |
 | Source for reel | Use clips from the referenced job | Only if no job is referenced or identifiable |
 | Videogram vs audiogram | Both for video files, audiogram for audio | Never ask, just do both |
-| owner filter | `owner=org` (matches web dashboard) | Use `owner=me` only if they say "my uploads" or "uploaded by me" |
 | source filter | Omit (shows all) | Use `source=web` if they say "from the web", `source=api` if they say "from the API" |
 | Limit | 10 | Never ask |
 
@@ -68,26 +67,9 @@ Store this context mentally. Use it to:
 
 Do NOT dump this info to the user unprompted. Just know it. Use it when relevant.
 
-### Recording sources and ownership
+### Recording sources
 
-Each recording from `list_jobs` includes:
-
-- `source` — `"web"` (uploaded through the web app/editor) or `"api"` (created via this API/MCP).
-- `uploaded_by` — `{id, name, email}` of the user who actually uploaded the recording. Different from the API key holder when the org has multiple members.
-
-By default `list_jobs` returns recordings from the entire organization (matching what the web dashboard shows). Pass `owner=me` to scope to recordings uploaded under the API key's user.
-
-When showing the user a list of recordings, **always include the source tag and the uploader name** if there are recordings from multiple users. Format:
-
-```
-1. **Recording title** [web] — Jane Doe · duration · clip count · date
-2. **Other recording** [api] — Jane Doe · duration · clip count · date
-3. **Teammate's recording** [web] — Bob Smith · duration · clip count · date
-```
-
-If all recordings belong to the same user (the common case for solo accounts), you can omit the uploader name and just keep the source tag.
-
-When the user says "my recordings" or seems confused that they see recordings from other org members, offer to filter by `owner=me`.
+Each recording from `list_jobs` includes a `source` field (`"web"` or `"api"`) and an `uploaded_by` object. When listing recordings, show the source tag so the user knows the origin. If recordings come from multiple uploaders, show the uploader name too.
 
 ## Onboarding
 
