@@ -282,7 +282,8 @@ class MCPE2ETest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("jobs", data)
         self.assertIsInstance(data["jobs"], list)
-        # Jobs may be empty on QAS test account
+        self.assertGreater(len(data["jobs"]), 0,
+            "list_jobs returned empty. Should include org-level recordings.")
 
     # ===================================================================
     # 9. CONTENT - GENERATE
@@ -544,7 +545,8 @@ class MCPE2ETest(unittest.IsolatedAsyncioTestCase):
             })
 
         self.assertIn("results", data)
-        # May be empty on QAS test account
+        self.assertGreater(len(data["results"]), 0,
+            "search_transcripts returned empty. Should find org-level clip transcripts.")
 
     # ===================================================================
     # 19. TEMPLATES
