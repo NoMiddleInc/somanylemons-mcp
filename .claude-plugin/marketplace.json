@@ -11,8 +11,7 @@
       "description": "AI-powered video reels, LinkedIn posts, and image quotes. Record once, get branded content for every platform.",
       "source": {
         "source": "url",
-        "url": "https://github.com/NoMiddleInc/somanylemons-mcp.git",
-        "sha": "0454dcdd5e59aebe64fcaae93630d506c6405768"
+        "url": "https://github.com/NoMiddleInc/somanylemons-mcp.git"
       },
       "category": "productivity",
       "homepage": "https://somanylemons.com"

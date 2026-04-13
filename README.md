@@ -1,48 +1,39 @@
 # SoManyLemons MCP
 
-AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more directly from Claude Code, Cursor, or any MCP-compatible client.
+AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more — just type `/lemons`.
 
-## Get Started
-
-### 1. Get a free API key
-
-**Option A: Sign up on the website**
-
-1. Create an account at [somanylemons.com/signup](https://somanylemons.com/signup)
-2. Go to the [Developer Portal](https://somanylemons.com/developers/portal)
-3. Click **New Key**, give it a name, and copy your `sml_` key
-
-**Option B: Sign up via command line**
+## Install (one line)
 
 ```bash
-curl -X POST https://api.somanylemons.com/api/v1/signup \
-  -H "Content-Type: application/json" \
-  -d '{"email": "you@example.com"}'
+curl -sL https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/install.sh | bash
 ```
 
-Save the `sml_` key from the response. It won't be shown again.
+The installer will:
+1. Install the `/lemons` command globally
+2. Ask for your API key (get one free at [somanylemons.com/developers/portal](https://somanylemons.com/developers/portal))
+3. Connect the MCP server
 
-You can always create and manage additional API keys from the [Developer Portal](https://somanylemons.com/developers/portal).
+Restart Claude Code after installing. That's it.
 
-### 2. Add to Claude Code
+### Manual install (if you prefer)
 
 ```bash
-claude mcp add --transport http somanylemons \
+# 1. Get an API key from https://somanylemons.com/developers/portal
+
+# 2. Register the MCP server
+claude mcp add --scope user --transport http somanylemons \
   https://mcp.somanylemons.com/mcp \
   --header "X-API-Key: sml_YOUR_KEY"
+
+# 3. Install /lemons command
+mkdir -p ~/.claude/commands && \
+curl -sL https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/commands/lemons.md \
+  -o ~/.claude/commands/lemons.md
+
+# 4. Restart Claude Code
 ```
 
-### 3. Install the /lemons skill
-
-The MCP server provides the tools. The `/lemons` skill tells Claude how to use them. Install it:
-
-```bash
-mkdir -p .claude/skills/lemons
-curl -s https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/skills/lemons/SKILL.md \
-  -o .claude/skills/lemons/SKILL.md
-```
-
-### 4. Use it
+## Use it
 
 Restart Claude Code (or start a new conversation), then:
 
