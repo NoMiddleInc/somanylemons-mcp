@@ -16,6 +16,8 @@ import argparse
 import contextlib
 import logging
 import os
+import time
+from collections import defaultdict
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -28,6 +30,30 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory rate limiter (per-instance, no Redis needed for Cloud Run).
+# Limits connections per API key to prevent brute-force and abuse.
+# ---------------------------------------------------------------------------
+
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX_REQUESTS = 60  # per key per window
+
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_rate_limited(api_key: str) -> bool:
+    """Return True if this API key has exceeded the per-minute request limit."""
+    now = time.monotonic()
+    bucket = _rate_buckets[api_key]
+    # Prune old entries
+    cutoff = now - _RATE_LIMIT_WINDOW
+    _rate_buckets[api_key] = [t for t in bucket if t > cutoff]
+    bucket = _rate_buckets[api_key]
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        return True
+    bucket.append(now)
+    return False
 
 import somanylemons_mcp.server as _srv
 
@@ -57,7 +83,17 @@ def _create_app() -> ASGIApp:
         middleware=[
             Middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
+                allow_origins=[
+                    "https://claude.ai",
+                    "https://www.claude.ai",
+                    "https://cursor.sh",
+                    "https://www.cursor.sh",
+                    "https://somanylemons.com",
+                    "https://qas.somanylemons.com",
+                    "http://localhost",
+                    "http://localhost:3000",
+                    "http://localhost:8000",
+                ],
                 allow_methods=["GET", "POST", "DELETE"],
                 allow_headers=["*"],
                 expose_headers=["mcp-session-id"],
@@ -81,6 +117,23 @@ def _create_app() -> ASGIApp:
                 response = JSONResponse(
                     {"error": "X-API-Key header required"},
                     status_code=401,
+                )
+                await response(scope, receive, send)
+                return
+
+            if not client_key.startswith("sml_") or len(client_key) < 20:
+                response = JSONResponse(
+                    {"error": "Invalid API key format"},
+                    status_code=401,
+                )
+                await response(scope, receive, send)
+                return
+
+            if _is_rate_limited(client_key):
+                response = JSONResponse(
+                    {"error": "Rate limit exceeded. Max 60 requests per minute."},
+                    status_code=429,
+                    headers={"Retry-After": "60"},
                 )
                 await response(scope, receive, send)
                 return

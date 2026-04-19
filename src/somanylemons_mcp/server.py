@@ -68,6 +68,32 @@ def get_headers():
 
 
 # ---------------------------------------------------------------------------
+# Security: sanitize error responses before returning to MCP consumer
+# ---------------------------------------------------------------------------
+
+# Keys whose values could contain secrets if the backend leaks them in errors.
+_SENSITIVE_KEYS = frozenset({
+    "authorization", "x-api-key", "api_key", "apikey", "token",
+    "secret", "password", "cookie", "set-cookie",
+})
+
+
+def _sanitize_response(data):
+    """Remove fields that could contain API keys or auth headers from error
+    responses. Operates recursively on dicts and lists."""
+    if isinstance(data, dict):
+        return {
+            k: "(redacted)" if k.lower() in _SENSITIVE_KEYS else _sanitize_response(v)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_sanitize_response(item) for item in data]
+    if isinstance(data, str) and data.startswith("sml_") and len(data) > 20:
+        return data[:8] + "…(redacted)"
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Helper: generic API call -> MCP TextContent
 # ---------------------------------------------------------------------------
 
@@ -94,7 +120,7 @@ async def _api_call(method, path, payload=None, params=None, timeout=30):
         return [TextContent(type="text", text=json.dumps({
             "error": True,
             "status_code": resp.status_code,
-            "detail": data,
+            "detail": _sanitize_response(data),
         }, indent=2))]
 
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
