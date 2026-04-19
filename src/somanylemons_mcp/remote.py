@@ -162,8 +162,13 @@ def main():
     # the local filesystem will be rejected explicitly (see server.call_tool).
     _srv.REMOTE_MODE = True
 
+    # Use "warning" in production to avoid logging request headers (which
+    # could contain API keys on malformed requests). "info" is safe for local
+    # dev but noisy and risky in hosted mode.
+    log_level = os.environ.get("LOG_LEVEL", "warning").lower()
+
     import uvicorn
-    uvicorn.run(_create_app(), host=args.host, port=args.port, log_level="info")
+    uvicorn.run(_create_app(), host=args.host, port=args.port, log_level=log_level)
 
 
 if __name__ == "__main__":
