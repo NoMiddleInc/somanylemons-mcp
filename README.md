@@ -72,7 +72,7 @@ Backend API (api.somanylemons.com)
 
 | Tool | Description |
 |------|-------------|
-| `create_reels` | Turn a recording into branded, captioned video reels (async) |
+| `create_reels` | Turn a recording into branded videograms, audiograms, or image quotes (async) |
 | `check_job_status` | Poll processing status and get download URLs |
 | `create_upload_session` | Create a resumable upload session for large files |
 | `check_upload_status` | Check resumable upload progress |

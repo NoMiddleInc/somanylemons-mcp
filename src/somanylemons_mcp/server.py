@@ -58,6 +58,8 @@ CAPTION_STYLES = [
     "GLITCH", "RANSOM", "WAVE", "BOUNCE",
 ]
 
+ASSET_TYPES = ["videogram", "audiogram", "image_quote"]
+
 
 def get_headers():
     key = _session_api_key.get() or API_KEY
@@ -143,7 +145,8 @@ async def list_tools():
                 "Turn a recording into branded, captioned short-form video reels. "
                 "Submit a URL to a video or audio file. Returns a job ID to poll. "
                 "The pipeline transcribes, extracts the best moments, and renders "
-                "captioned clips with your brand styling. Typical time: 2-5 minutes."
+                "captioned clips with your brand styling. Defaults to videograms; "
+                "set asset_types to request audiograms or image quotes. Typical time: 2-5 minutes."
             ),
             inputSchema={
                 "type": "object",
@@ -159,6 +162,11 @@ async def list_tools():
                     "brand_profile_id": {
                         "type": "integer",
                         "description": "Brand profile ID for styling. Use list_brands to see options.",
+                    },
+                    "asset_types": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ASSET_TYPES},
+                        "description": "Rendered asset types to create. Defaults to ['videogram'].",
                     },
                     "caption_style": {
                         "type": "string",

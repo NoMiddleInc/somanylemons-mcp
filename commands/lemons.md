@@ -36,7 +36,7 @@ When a parameter is needed but the user didn't specify it:
 | Brand profile | Use the default (or only) one | Only if they have 3+ brands |
 | Caption style | Omit (system picks) | Never ask unprompted |
 | Source for reel | Use clips from the referenced job | Only if no job is referenced or identifiable |
-| Videogram vs audiogram | Both for video files, audiogram for audio | Never ask, just do both |
+| Asset type | `asset_types=["videogram"]` | Only ask if they explicitly mention audio, audiogram, quote image, image quote, or multiple formats |
 | source filter | Omit (shows all) | Use `source=web` if they say "from the web", `source=api` if they say "from the API" |
 | Limit | 10 | Never ask |
 
@@ -44,7 +44,7 @@ When a parameter is needed but the user didn't specify it:
 
 When making a decision for the user, state what you chose in one short line, then immediately execute. Do NOT wait for confirmation.
 
-Good: "Using both clips from job #1110 with your default brand." [immediately calls create_reels]
+Good: "Creating videograms from job #1110 with your default brand." [immediately calls create_reels]
 Bad: "Which clips do you want? What brand? What caption style?"
 
 ### 4. Never ask menus of clarifying questions
@@ -257,21 +257,19 @@ Then: "What do you want to work on?"
 
 Use the preloaded brand data. If no profiles exist, run brand setup (Step 3 from onboarding). If profiles exist, use the default one (or ask if they have multiple).
 
-### 3. Videogram vs. audiogram
+### 3. Asset type
 
-Detect file type from extension:
+Default to `asset_types=["videogram"]` unless the user explicitly asks for another output.
 
-**Audio file** (.mp3, .wav, .m4a, .aac, .ogg):
-- Submit 1 audiogram job. No need to ask.
-
-**Video file** (.mp4, .mov, .webm, .avi):
-- Say: "I'll create both a videogram and an audiogram. The videogram uses your video as the background with captions overlaid. The audiogram uses a template background and can include a talking head overlay. Want both (recommended), or just one?"
-- Default to both if they agree or just say "go" or "yes".
-- Submit 2 jobs via `create_reels` (one for each type).
+Use these mappings:
+- "video", "reel", "clip", "videogram" -> `asset_types=["videogram"]`
+- "audio", "audiogram" -> `asset_types=["audiogram"]`
+- "quote", "image quote", "quote image" -> `asset_types=["image_quote"]`
+- "all formats", "everything", "video, audio, and quote" -> `asset_types=["videogram","audiogram","image_quote"]`
 
 ### 4. Submit and wait
 
-Call `create_reels` with the URL and brand_profile_id.
+Call `create_reels` with the URL, brand_profile_id, and asset_types.
 
 Then ask: "Want me to wait for results, or give you the job IDs to check later?"
 
