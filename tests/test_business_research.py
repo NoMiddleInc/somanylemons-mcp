@@ -107,6 +107,30 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(request.method == "GET" for request in calls))
         self.assertEqual(calls[0].url.params["view"], "answer")
 
+    def test_real_backend_contact_projection_preserves_counts_and_truncation(self):
+        task = {"id": 75, "state": "running", "contract": {"workflow": "business_research"},
+            "business_answer": {"counts": {"contacts": 150, "recorded_emails": 130},
+                "contacts_total": 150, "contacts_truncated": True,
+                "contacts": [{"id": "one", "name": "Person", "company": "Dell", "title": "CIO",
+                    "email": "person@dell.example", "email_verified_at": "2026-09-01T10:00:00Z",
+                    "email_status": "verified", "enrichment_status": "completed",
+                    "website_url": "https://dell.example", "linkedin_status": "not_returned_by_completed_provider",
+                    "field_provenance": {"email": {"status": "recorded", "source": "Apollo", "observed_at": "2026-10-05T10:00:00Z", "uncertainty": "Provider reported; no fresh verification."}},
+                    "evidence_refs": [{"source_url": "https://publisher.example.com/person", "observed_at": "2026-10-05T10:00:00Z"},
+                        {"provider": "apollo", "field": "professional_identity", "source_operation_id": 19, "enrichment_source": "completed_apollo_receipt_reused"}]}]}}
+        result = compact_research_answer(task)
+        self.assertEqual(result["business_answer"]["counts"]["contacts"], 150)
+        self.assertEqual(result["contacts"][0]["email"], "person@dell.example")
+        self.assertEqual(result["contacts"][0]["email_verified_at"], "2026-09-01T10:00:00Z")
+        self.assertEqual(result["contacts"][0]["website_url"], "https://dell.example")
+        self.assertEqual(result["contacts"][0]["linkedin_status"], "not_returned_by_completed_provider")
+        self.assertEqual(result["contacts"][0]["field_provenance"]["email"]["source"], "Apollo")
+        self.assertEqual(result["contacts"][0]["evidence_refs"][1]["source_operation_id"], 19)
+        self.assertEqual(result["pagination"]["contacts_total"], 150)
+        self.assertEqual(result["pagination"]["contacts_available"], 1)
+        self.assertTrue(result["pagination"]["contacts_truncated"])
+        self.assertEqual(result["saved_status_count_scope"], {"contacts_counted": 1, "contacts_total": 150, "complete": False})
+
 
 if __name__ == "__main__":
     unittest.main()
