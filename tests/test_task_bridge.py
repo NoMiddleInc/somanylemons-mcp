@@ -79,3 +79,13 @@ class RemoteIsolationTests(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(accepted.status_code,200)
   self.assertEqual(calls,['sml_owner_abcdefghijklmnopqrstuvwxyz','sml_owner_abcdefghijklmnopqrstuvwxyz'])
   self.assertEqual(server._session_api_key.get(),'')
+
+class InitializeInstructionsTests(unittest.TestCase):
+ def test_outer_server_exposes_research_rules_without_customer_credentials(self):
+  from somanylemons_mcp.server import server
+  instructions=server.create_initialization_options().instructions
+  self.assertIn('status_counts_by_person',instructions)
+  self.assertIn('Do not infer that government',instructions)
+  self.assertIn('content tools according to their schemas',instructions)
+  self.assertNotIn('schema-only',instructions)
+  self.assertNotIn('schema.invalid',instructions)

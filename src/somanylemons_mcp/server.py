@@ -144,10 +144,18 @@ async def _api_call(method, path, payload=None, params=None, timeout=30):
 _research_only: contextvars.ContextVar[bool] = contextvars.ContextVar("research_only", default=False)
 
 from importlib.resources import files
+from .task_bridge import SCHEMA_SERVER
 RESEARCH_SKILL = files("somanylemons_mcp").joinpath("skills/producerspark/SKILL.md").read_text()
 RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 
-server = Server("somanylemons", instructions=RESEARCH_INSTRUCTIONS)
+server = Server(
+    "somanylemons",
+    instructions=(
+        RESEARCH_INSTRUCTIONS + "\n\n"
+        "Use the content tools according to their schemas and descriptions. Hosted file uploads requiring local filesystem access remain unavailable; no research task authorizes content publishing or outreach. "
+        + (SCHEMA_SERVER.instructions or "")
+    ),
+)
 
 
 @server.list_tools()
