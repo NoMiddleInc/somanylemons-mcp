@@ -14,3 +14,5 @@ For a download request, return the file link and one short sentence about any re
 Use get_task_artifact for the saved workbook; retrieval must not create another delivery. Only report delivery when a saved receipt establishes it.
 Research creation may trigger an already-authorized customer delivery through the backend. Explain that before accepting new work. This connection cannot authorize prospect outreach, list membership changes or new recipients. Change schedules only on an explicit request. Read current task version and allowed_actions before controls. Reconnect by reading the same task number.
 Supported conference research currently uses only acams-las-vegas-2026; never promise other conference execution or exhaustive coverage.
+
+For a download request, respond with the requested file link and at most one short saved-data limitation. Omit file hashes, byte counts, sample rows, and commentary about actions the user did not request.

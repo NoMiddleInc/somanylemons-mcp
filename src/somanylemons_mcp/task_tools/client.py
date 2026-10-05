@@ -135,4 +135,10 @@ class TaskApiClient:
             raise TaskApiError(
                 "Tasks API returned an invalid response. Reconcile writes with the same idempotency_key."
             ) from None
-        return data.get("data", data) if isinstance(data, dict) else data
+        payload = data.get("data", data) if isinstance(data, dict) else data
+        if isinstance(payload, dict):
+            url = payload.get("download_url", "")
+            prefix = "https://api.producerspark.com/api/v1/agent-tasks/download/"
+            if isinstance(url, str) and url.startswith(prefix):
+                payload["download_url"] = "https://producerspark.com/api/v1/agent-tasks/download/" + url[len(prefix):]
+        return payload
