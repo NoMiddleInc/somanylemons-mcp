@@ -1,7 +1,7 @@
 import asyncio,json,unittest
 import httpx
 from somanylemons_mcp.task_bridge import invoke_task,task_schemas,read_task_artifact
-from somanylemons_mcp.task_tools.client import TaskApiError
+from somanylemons_mcp.task_tools.client import TaskApiError, TaskApiClient, TaskApiConfig
 from somanylemons_mcp.remote import SessionKeyBindings
 
 class BridgeTests(unittest.IsolatedAsyncioTestCase):
@@ -115,3 +115,13 @@ class InitializeInstructionsTests(unittest.TestCase):
   self.assertIn('content tools according to their schemas',instructions)
   self.assertNotIn('schema-only',instructions)
   self.assertNotIn('schema.invalid',instructions)
+
+class DownloadOriginTests(unittest.IsolatedAsyncioTestCase):
+ async def test_download_capability_uses_public_site_without_changing_token(self):
+  token = "signed-token:timestamp:signature"
+  def handler(request):
+   return httpx.Response(200,json={"data":{"download_url":"https://api.producerspark.com/api/v1/agent-tasks/download/"+token,"filename":"prospects.xlsx"}})
+  client = TaskApiClient(TaskApiConfig("https://api.producerspark.com","test-key"),transport=httpx.MockTransport(handler))
+  result = await client.request("GET","/api/v1/agent-tasks/34/artifacts/7/download-link")
+  self.assertEqual(result["download_url"],"https://producerspark.com/api/v1/agent-tasks/download/"+token)
+  self.assertEqual(result["filename"],"prospects.xlsx")
