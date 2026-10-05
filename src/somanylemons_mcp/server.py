@@ -22,7 +22,7 @@ import sys
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent
+    from mcp.types import Tool, TextContent, Icon
 except ImportError:
     print(
         "Error: mcp package not installed. Install with:\n"
@@ -149,7 +149,9 @@ RESEARCH_SKILL = files("somanylemons_mcp").joinpath("skills/producerspark/SKILL.
 RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 
 server = Server(
-    "producerspark",
+    "ProducerSpark",
+    website_url="https://producerspark.com",
+    icons=[Icon(src="https://producerspark.com/brand/producerspark-icon-v2.svg", mimeType="image/svg+xml")],
     instructions=(
         RESEARCH_INSTRUCTIONS + "\n\n"
         "Use the content tools according to their schemas and descriptions. Hosted file uploads requiring local filesystem access remain unavailable; no research task authorizes content publishing or outreach. "
