@@ -324,7 +324,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(annotations=WRITE)
     async def create_conference_research_request(
-        event_id: Literal["acams-las-vegas-2026"],
+        event_id: Literal["acams-las-vegas-2026", "rsa-usa-2026", "icba-live-2026", "acfe-global-2026", "aba-aml-fraud-2026", "afp-2026"],
         request: Annotated[str, Field(min_length=1, max_length=2000)],
         idempotency_key: UUID,
         config_id: PositiveId | None = None,

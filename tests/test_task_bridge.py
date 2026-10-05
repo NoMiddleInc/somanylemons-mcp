@@ -10,6 +10,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(len(tools),18)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
+  self.assertEqual(set(tools['create_conference_research_request'].inputSchema['properties']['event_id']['enum']), {'acams-las-vegas-2026','rsa-usa-2026','icba-live-2026','acfe-global-2026','aba-aml-fraud-2026','afp-2026'})
   self.assertNotIn('production_capture',tools['create_conference_research_request'].inputSchema['properties'])
  async def test_concurrent_clients_never_share_keys(self):
   calls=[]
