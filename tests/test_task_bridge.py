@@ -99,6 +99,8 @@ class RemoteIsolationTests(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(first.status_code,200)
     attack=await client.post('/mcp',headers={'x-api-key':'sml_other_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
     self.assertEqual(attack.status_code,403)
+    stale=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'previous-deploy-session'})
+    self.assertEqual(stale.status_code,404)
     accepted=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
     self.assertEqual(accepted.status_code,200)
   self.assertEqual(calls,['sml_owner_abcdefghijklmnopqrstuvwxyz','sml_owner_abcdefghijklmnopqrstuvwxyz'])

@@ -236,11 +236,14 @@ def _create_app() -> ASGIApp:
 
             session_id = request.headers.get("mcp-session-id", "")
             if not bindings.check(session_id, binding_key):
+                # MCP clients reinitialize on 404 after an instance restart or
+                # session expiry. A 403 is reserved for a known foreign owner.
+                status = 404 if session_id and session_id not in bindings.owners else 403
                 response = JSONResponse(
                     {
                         "error": "MCP session is unavailable for this API key; initialize a new session."
                     },
-                    status_code=403,
+                    status_code=status,
                 )
                 await response(scope, receive, send)
                 return
