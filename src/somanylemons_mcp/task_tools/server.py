@@ -470,18 +470,30 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return {"sheets_summary": summary, **data}
 
     @server.tool(annotations=READ)
-    async def get_my_icp(config_id: PositiveId | None = None) -> dict:
+    async def get_my_icp(config_id: PositiveId | None = None, campaign_id: PositiveId | None = None) -> dict:
         """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use whenever the user asks about their ICP. Never infer an ICP from attendees. When status is not_saved, state briefly that targeting criteria are unavailable and the download contains account metadata only."""
-        data = await api.request("GET", "/api/v1/agent-tasks/icp", params={"config_id": config_id} if config_id else None)
+        data = await api.request("GET", "/api/v1/agent-tasks/icp", params={k: v for k, v in {"config_id": config_id, "campaign_id": campaign_id}.items() if v is not None})
         if data.get("status") == "not_saved":
             return {"notice": "No saved ICP targeting criteria or profile are available for this account. The Excel download contains account metadata only.", **data}
         return data
 
     @server.tool(annotations=READ)
-    async def get_prospect_list(goal_id: PositiveId | None = None, config_id: PositiveId | None = None) -> dict:
-        """Get my saved prospect list as a downloadable Excel file. Uses the latest saved task workbook unless a task is specified. Returns actual task state; saved data can exist before task completion. No research or sends."""
+    async def get_prospect_list(goal_id: PositiveId | None = None, config_id: PositiveId | None = None, campaign_id: PositiveId | None = None) -> dict:
+        """Download my MAIN golden/prospect/ICP list as Excel using owned or explicitly shared list access. Defaults to the canonical main golden list, never a conference workbook. Specify campaign_id to choose another accessible list. Only use goal_id for an explicitly requested research-task workbook. A saved snapshot can have unfinished enrichment; state actual coverage briefly. No research or sends."""
         return await api.request("GET", "/api/v1/agent-tasks/prospect-list",
-                                 params={k: v for k, v in {"goal_id": goal_id, "config_id": config_id}.items() if v is not None})
+                                 params={k: v for k, v in {"goal_id": goal_id, "config_id": config_id, "campaign_id": campaign_id}.items() if v is not None})
+
+    @server.tool(annotations=READ)
+    async def list_golden_lists(config_id: PositiveId | None = None) -> dict:
+        """List my owned and explicitly shared main golden/ICP/prospect lists. Never ask for an account/config ID before checking these accessible lists. Does not expose unrelated owner accounts."""
+        return await api.request("GET", "/api/v1/agent-tasks/golden-lists",
+                                 params={"config_id": config_id} if config_id else None)
+
+    @server.tool(annotations=READ)
+    async def read_golden_list(campaign_id: PositiveId | None = None, config_id: PositiveId | None = None, include_rows: bool = True) -> dict:
+        """Read all saved main golden-list contacts, emails, verification and enrichment fields in ONE call. This is the canonical main list, not a research-task workbook. Defaults to the main list; campaign_id chooses another accessible list. Set include_rows=false for counts only. Never starts research, enrollment or sends."""
+        return await api.request("GET", "/api/v1/agent-tasks/golden-lists/read",
+                                 params={k: v for k, v in {"campaign_id": campaign_id, "config_id": config_id, "include_rows": include_rows}.items() if v is not None})
 
     @server.resource(
         "producerspark-task-artifact://{goal_id}/{artifact_id}",

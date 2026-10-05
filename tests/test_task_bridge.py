@@ -15,7 +15,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('source_urls',task['conference_answer']['event'])
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
-  self.assertEqual(len(tools),18)
+  self.assertEqual(len(tools),20)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
   self.assertEqual(set(tools['create_conference_research_request'].inputSchema['properties']['event_id']['enum']), {'acams-las-vegas-2026','rsa-usa-2026','icba-live-2026','acfe-global-2026','aba-aml-fraud-2026','afp-2026'})
@@ -155,3 +155,15 @@ class DownloadOriginTests(unittest.IsolatedAsyncioTestCase):
   result = await client.request("GET","/api/v1/agent-tasks/34/artifacts/7/download-link")
   self.assertEqual(result["download_url"],"https://producerspark.com/api/v1/agent-tasks/download/"+token)
   self.assertEqual(result["filename"],"prospects.xlsx")
+
+ async def test_main_list_tools_use_canonical_routes_and_list_ids(self):
+  calls=[]
+  def handler(request):
+   calls.append(request)
+   return httpx.Response(200,json={'data':{'source':'main golden list','campaign_id':44}})
+  transport=httpx.MockTransport(handler)
+  for name,args in [('list_golden_lists',{}),('read_golden_list',{'campaign_id':44,'include_rows':False}),('get_prospect_list',{'campaign_id':44}),('get_my_icp',{'campaign_id':44})]:
+   await invoke_task(name,args,api_url='https://example.com',api_key='owner',transport=transport)
+  self.assertEqual([r.url.path for r in calls],['/api/v1/agent-tasks/golden-lists','/api/v1/agent-tasks/golden-lists/read','/api/v1/agent-tasks/prospect-list','/api/v1/agent-tasks/icp'])
+  self.assertEqual(calls[-1].url.params['campaign_id'],'44')
+  self.assertEqual(calls[1].url.params['include_rows'],'false')

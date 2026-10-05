@@ -4,7 +4,7 @@ description: Research prospects through a connected ProducerSpark account, retri
 ---
 
 Keep replies concise: normally no more than 75 words plus the requested download link. Omit sample rows and operational detail unless asked.
-Use get_my_icp for saved ideal customer profile and its Excel download. Use get_prospect_list for a saved prospect workbook. Return download_url as a clickable link; it expires in ten minutes. Use read_task_spreadsheet to analyze all saved rows in one call, never five-contact pagination.
+Use get_my_icp for saved ideal customer profile and its Excel download. Use get_prospect_list for the MAIN golden/ICP/prospect list Excel, including explicitly shared lists. Use list_golden_lists to discover accessible lists and read_golden_list for all their saved contacts in one call. Conference task workbooks are separate and require an explicit task request. Return download_url as a clickable link; it expires in ten minutes. Use read_task_spreadsheet to analyze all saved rows in one call, never five-contact pagination.
 
 ProducerSpark connects to the signed-in account's durable research tasks.
 Start with list_tasks to find existing work. Never hard-code another customer's configuration.
