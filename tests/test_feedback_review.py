@@ -174,6 +174,26 @@ class FeedbackProjectionTests(unittest.TestCase):
         original["customer"]["id"] = 99
         with self.assertRaises(TaskApiError): list_task_navigation({"tasks": [original]})
 
+    def test_list_preserves_backend_feedback_summary_without_rows_or_draft_bodies(self):
+        original = task_fixture(24)
+        snapshot = original["feedback_review_snapshot"]
+        summary = {key: deepcopy(snapshot[key]) for key in (
+            "version", "counts", "review_scope", "saved_delivery", "counting_basis", "native_research_counts_replaced",
+        )}
+        row = {key: deepcopy(original[key]) for key in (
+            "id", "current_answer_goal_id", "customer", "answer_lineage_scope", "progress", "version", "state", "allowed_actions",
+        )}
+        row["feedback_review_summary"] = summary
+        listed = list_task_navigation({"tasks": [row]})["tasks"][0]
+        self.assertEqual(listed["feedback_review_summary"], summary)
+        self.assertEqual(listed["feedback_review_summary"]["counts"], {
+            "selected_review_contact_count": 39, "recorded_business_email_count": 35, "sequence_step_count": 234,
+        })
+        self.assertEqual(listed["listed_goal_progress"]["completed"], 3)
+        self.assertEqual(listed["feedback_review_summary"]["review_scope"]["remaining_original_agency_count"], 100)
+        self.assertNotIn("selected_review_contacts", json.dumps(listed))
+        self.assertNotIn("draft_sequences", json.dumps(listed))
+
     def test_coherent_task_and_attachment_revision_relabeling_fails_reviewed_publication_binding(self):
         for goal_id in (24, 52):
             task = task_fixture(goal_id)
