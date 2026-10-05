@@ -89,6 +89,7 @@ def public_blocker(blocker):
 
 
 def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
+    from .provenance import bounded_email_provenance
     """Project only saved, current-scope customer facts; never qualify rows locally."""
     result = {key: task.get(key) for key in (
         "id", "title", "state", "fulfillment", "progress", "next_action",
@@ -100,6 +101,8 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
         result["conference_answer"] = {
             key: value for key, value in conference.items() if key not in {"rows", "sources"}
         }
+        if isinstance(conference.get("enrichment_summary"), dict):
+            result["conference_answer"]["enrichment_summary"] = bounded_email_provenance(conference["enrichment_summary"], source_page)
         event = result["conference_answer"].get("event")
         if isinstance(event, dict):
             # Declared fetch targets are not opened-source evidence. Preserve
@@ -132,14 +135,15 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
             evidence = row.get("evidence_refs", [])
             projected["evidence_refs"] = [
                 {
-                    key: (value[:300] if key == "quote" and isinstance(value, str) else value)
+                    key: (value[:160] if key == "quote" and isinstance(value, str) else value)
                     for key, value in ref.items()
                     if key in {"url", "source_url", "content_hash", "observed_at", "quote"}
                 }
-                for ref in evidence[:5]
+                for ref in evidence[:2]
                 if isinstance(ref, dict)
             ]
             projected["evidence_refs_total"] = len(evidence)
+            projected["evidence_refs_preview_scope"] = "At most two references with quote excerpts of at most 160 characters; full evidence remains in the saved artifact."
             result["contacts"].append(projected)
         result["sources"] = conference.get("sources", [])[(source_page - 1) * 3 : source_page * 3]
         result["pagination"] = {
