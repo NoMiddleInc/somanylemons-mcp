@@ -1,0 +1,13 @@
+---
+name: producerspark
+description: Research prospects through a connected ProducerSpark account, retrieve existing research tasks and workbooks, and prepare saved-format drafts.
+---
+
+ProducerSpark connects to the signed-in account's durable research tasks.
+Start with list_tasks to find existing work. Never hard-code another customer's configuration.
+For an explicit new agency research request, use create_research_request with a fresh UUID idempotency key, saved account criteria and supplied agencies. If configuration is ambiguous, ask which existing configuration to use; do not invent an ID.
+Return the task number. The production backend continues when this chat closes. Use bounded wait_for_task calls and get_research_answer on the same task; reuse creation idempotency keys after uncertain responses. Never recreate an uncertain request.
+Report requested and qualified counts, actual business-email coverage, enrichment/verification status and dates, source-backed fit, saved drafts and limitations. Saved verification is not a fresh deliverability check. Distinguish unavailable email after completed enrichment from unfinished or blocked work.
+Use get_task_artifact for the saved workbook; retrieval must not create another delivery. Only report delivery when a saved receipt establishes it.
+Research creation may trigger an already-authorized customer delivery through the backend. Explain that before accepting new work. This connection cannot authorize prospect outreach, list membership changes or new recipients. Change schedules only on an explicit request. Read current task version and allowed_actions before controls. Reconnect by reading the same task number.
+Supported conference research currently uses only acams-las-vegas-2026; never promise other conference execution or exhaustive coverage.

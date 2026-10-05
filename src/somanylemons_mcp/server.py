@@ -104,7 +104,13 @@ async def _api_call(method, path, payload=None, params=None, timeout=30):
 # Tool definitions
 # ---------------------------------------------------------------------------
 
-server = Server("somanylemons")
+_research_only: contextvars.ContextVar[bool] = contextvars.ContextVar("research_only", default=False)
+
+from importlib.resources import files
+RESEARCH_SKILL = files("somanylemons_mcp").joinpath("skills/producerspark/SKILL.md").read_text()
+RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
+
+server = Server("somanylemons", instructions=RESEARCH_INSTRUCTIONS)
 
 
 @server.list_tools()
@@ -779,7 +785,7 @@ async def list_tools():
     ]
 
     from .task_bridge import task_schemas
-    return tools + await task_schemas()
+    return await task_schemas() if _research_only.get() else tools + await task_schemas()
 
 
 # ---------------------------------------------------------------------------
@@ -911,6 +917,8 @@ TOOL_ROUTES.update({name: ("TASK", "") for name in TASK_TOOL_NAMES})
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
     from .task_bridge import invoke_task
+    if _research_only.get() and name not in TASK_TOOL_NAMES:
+        return [TextContent(type="text", text="This account connection permits research tools only.")]
     if TOOL_ROUTES.get(name, (None,))[0] == "TASK":
         key = _session_api_key.get() if REMOTE_MODE else (_session_api_key.get() or API_KEY)
         return await invoke_task(name, arguments, api_url=API_URL, api_key=key)
