@@ -6,6 +6,8 @@ import re
 import time
 
 from .client import TaskApiError
+from .agency_identity import agency_lineage_identity
+from .feedback_review import validate_feedback_snapshot
 
 MAX_POINTER_HOPS = 3
 
@@ -15,6 +17,8 @@ def positive_id(value):
 
 
 def _identity(task):
+    if isinstance(task.get("research_answer"), dict) and not isinstance(task.get("conference_answer"), dict):
+        return agency_lineage_identity(task)
     customer = task.get("customer")
     conference = task.get("conference_answer")
     event = conference.get("event") if isinstance(conference, dict) else None
@@ -55,6 +59,10 @@ async def resolve_current_answer(api, goal_id, *, historical_snapshot=False, tim
         )
         if not isinstance(task, dict) or task.get("id") != current_id or not positive_id(task.get("id")):
             raise TaskApiError("The saved answer does not match the requested goal.")
+        if task.get("feedback_review_snapshot") is not None:
+            feedback = validate_feedback_snapshot(task)
+            if feedback.get("status") == "unavailable" and task.get("current_answer_goal_id") is not None:
+                raise TaskApiError("Current feedback navigation has no validated saved binding; no historical result substituted.")
         visited.append(current_id)
         if requested is None:
             requested = task
@@ -91,6 +99,8 @@ def resolution_metadata(answer, resolved):
         "followed_current_answer": len(resolved.goal_ids) > 1,
         "pointer_hops": len(resolved.goal_ids) - 1,
         "validation_basis": (
+            "Backend-authoritative agency current_answer_goal_id; followed responses match the explicit workflow/config/client/organization/campaign/original-goal scope and authenticated customer. Selected feedback contacts remain separate from native qualification and original fulfillment."
+            if len(resolved.goal_ids) > 1 and isinstance(original.get("research_answer"), dict) and not isinstance(original.get("conference_answer"), dict) else
             "Backend-authoritative same-scope current_answer_goal_id; followed responses must match the authenticated customer and conference name/year. Exact config/organization/campaign scope is enforced by the backend, not inferred from artifacts."
             if len(resolved.goal_ids) > 1 else
             "Exact requested answer view; historical_snapshot bypasses current-answer navigation only when explicitly requested."

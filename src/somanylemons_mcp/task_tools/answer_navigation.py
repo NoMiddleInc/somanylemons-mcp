@@ -2,6 +2,9 @@
 
 from copy import deepcopy
 
+from .agency_identity import validated_agency_scope
+from .client import TaskApiError
+
 
 def positive_id(value):
     return type(value) is int and value > 0
@@ -43,6 +46,20 @@ def list_task_navigation(response):
         for field in ("blocker", "next_action", "next_run_at"):
             row["listed_goal_" + field] = row.pop(field, None)
         if positive_id(current):
+            scope = row.get("answer_lineage_scope")
+            if isinstance(scope, dict) and scope.get("workflow") == "agency_research":
+                scope = validated_agency_scope(scope)
+                customer = row.get("customer")
+                if isinstance(customer, dict) and (not positive_id(customer.get("id")) or customer["id"] != scope["client_id"]):
+                    raise TaskApiError("The agency navigation customer does not match its explicit scope.")
+                row["current_answer_goal_id_basis"] = "Backend-proven explicit agency workflow/config/client/organization/campaign/original-goal lineage."
+                row["canonical_answer_action"] = {"tool": "get_research_answer", "goal_id": current}
+                row["outcome_summary"] = (
+                    f"Read get_research_answer(goal_id={current}) for the saved agency answer and any separate feedback-review snapshot. "
+                    "Selected feedback contacts, native qualified contacts and draft sequence steps have separate counts. "
+                    "Listed progress counts original-goal worker steps; a partial feedback batch does not fulfill the original agency request or clear remaining feedback holds."
+                )
+                continue
             row["current_answer_goal_id_basis"] = (
                 "Backend-proven same-scope conference source lineage; includes unfinished continuations without artifacts."
             )

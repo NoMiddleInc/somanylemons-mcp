@@ -10,10 +10,12 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import ResourceLink, ToolAnnotations
 from pydantic import BaseModel, Field
 
 from .client import TaskApiClient, TaskApiConfig, TaskApiError
+from .feedback_review import brief_feedback_projection, feedback_projection, read_feedback_attachment_resource
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 
@@ -270,6 +272,12 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     result["blocker"] = public_blocker(task.get("blocker"))
     if task.get("state") == "waiting_customer":
         result["customer_next_step"] = "Provide the agency names and their website domains when identity clarification is needed. The saved request will continue once the requested input is supplied."
+    feedback = feedback_projection(task, contact_page=contact_page)
+    if feedback is not None:
+        result["feedback_review_snapshot"] = feedback
+        if "answer_lineage_scope" in task:
+            result["answer_lineage_scope"] = task["answer_lineage_scope"]
+        result["native_contacts_basis"] = "Existing native qualified contacts; saved feedback-review selections and counts are separate."
     return result
 
 
@@ -281,12 +289,29 @@ def brief_answer(answer):
     result = {k: v for k, v in answer.items() if k not in hidden and v is not None}
     if isinstance(result.get("research_answer"), dict):
         result["research_answer"] = {k: v for k, v in result["research_answer"].items() if k != "agencies"}
+    if "feedback_review_snapshot" in result:
+        result["feedback_review_snapshot"] = brief_feedback_projection(result["feedback_review_snapshot"])
     result["details_available"] = "Use get_research_answer(details=true) for samples/drafts; read_task_spreadsheet for the full workbook."
     return result
 
 
+class TaskFastMCP(FastMCP):
+    """Preserve each feedback attachment's recorded MIME in dynamic resources."""
+
+    def __init__(self, api, *args, **kwargs):
+        self._task_api = api
+        super().__init__(*args, **kwargs)
+
+    async def read_resource(self, uri):
+        if str(uri).startswith("producerspark-feedback-attachment://"):
+            content, mime = await read_feedback_attachment_resource(self._task_api, uri)
+            return [ReadResourceContents(content=content, mime_type=mime)]
+        return await super().read_resource(uri)
+
+
 def create_server(api: TaskApiClient) -> FastMCP:
-    server = FastMCP(
+    server = TaskFastMCP(
+        api,
         "ProducerSpark Tasks",
         instructions=(
             "Conference answer units: report saved name/company roster entries, not distinct people. Always distinguish email-bearing roster entries from distinct recorded email addresses. The canonical raw speaker/session appearances and the selected customer file's row_count describe different files. "
@@ -316,6 +341,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Keep current allowance separate from recorded blocker text: an earlier monthly quota blocker does not establish today's allowance. Missing allowance fields are unknown, never zero. "
             "Available lookups do not clear review, model or source guards, authorize a retry, or prove completion. "
             "Include contact counts, actual email coverage, sources and limitations; never invent prospects or claim delivery before its recorded success."
+            " feedback_review_snapshot is a separately authorized immutable agency pilot: use its selected_review_contact_count, recorded_business_email_count and sequence_step_count. These selected review contacts are not all native qualified_contacts; six draft steps per contact are not six people. Preserve the exact saved CSV field strings, authored draft punctuation, sources, uncertainty and missing dates. Report review_scope original/batch/remaining agency counts and remaining_work_held; a completed pilot or saved provider acceptance does not fulfill the original request or prove inbox receipt. Attachments use producerspark-feedback-attachment resources and authenticated backend paths, never TaskArtifact IDs or local paths. Retrieval does not resume research, clear feedback holds, enroll prospects or send new emails."
             " When quoting a saved intro_email_draft, copy its exact characters and paragraph breaks, including Unicode curly apostrophes; do not normalize punctuation or rewrite the body. "
             "A false delivery_verified value means delivery has not been verified by that answer; it does not establish that no delivery occurred. Reconcile it with the saved task fulfillment and delivery records before making delivery claims."
             " Describe retrieval side effects separately from historical delivery: say no new email was sent during this retrieval, then state the recorded customer-workbook delivery status. Never use an unqualified no email was sent when saved delivery exists. Distinguish authorized customer workbook delivery from prospect outreach. The progress counter measures worker steps, never contacts. Use research_answer.counts, saved_email_status_counts and email_gaps for actual contact/email coverage. "
@@ -608,6 +634,16 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return await api.request(
             "GET", f"/api/v1/agent-tasks/{goal}/artifacts/{artifact}", binary=True
         )
+
+    @server.resource(
+        "producerspark-feedback-attachment://{goal_id}/{delivery_job_id}/{name_hex}/{sha256}",
+        mime_type="application/octet-stream",
+    )
+    async def feedback_attachment_resource(goal_id: str, delivery_job_id: str, name_hex: str, sha256: str) -> bytes:
+        """Read original feedback attachment bytes through the scoped backend facade."""
+        uri = f"producerspark-feedback-attachment://{goal_id}/{delivery_job_id}/{name_hex}/{sha256}"
+        content, _mime = await read_feedback_attachment_resource(api, uri)
+        return content
 
     return server
 

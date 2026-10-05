@@ -957,10 +957,14 @@ def _reject_local_fs_tool(tool_name: str) -> list:
 @server.read_resource()
 async def read_resource(uri):
     from mcp.server.lowlevel.helper_types import ReadResourceContents
-    from .task_bridge import read_task_artifact
+    from .task_bridge import read_task_artifact, read_task_feedback_attachment
     key = _request_identity()["api_key"]
-    content = await read_task_artifact(uri, api_url=API_URL, api_key=key)
-    return [ReadResourceContents(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    if str(uri).startswith("producerspark-feedback-attachment://"):
+        content, mime = await read_task_feedback_attachment(uri, api_url=API_URL, api_key=key)
+    else:
+        content = await read_task_artifact(uri, api_url=API_URL, api_key=key)
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return [ReadResourceContents(content, mime)]
 
 
 from .task_bridge import TASK_TOOL_NAMES

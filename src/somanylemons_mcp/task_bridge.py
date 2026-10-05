@@ -23,3 +23,11 @@ async def read_task_artifact(uri, *, api_url, api_key, transport=None):
     api = TaskApiClient(TaskApiConfig(api_url, api_key, auth_scheme="X-API-Key"), transport=transport)
     goal, artifact = matched.groups()
     return await api.request("GET", f"/api/v1/agent-tasks/{goal}/artifacts/{artifact}", binary=True)
+
+
+async def read_task_feedback_attachment(uri, *, api_url, api_key, transport=None):
+    from .task_tools.feedback_review import read_feedback_attachment_resource
+    if not api_key:
+        raise TaskApiError("An account-scoped API key is required.")
+    api = TaskApiClient(TaskApiConfig(api_url, api_key, auth_scheme="X-API-Key"), transport=transport)
+    return await read_feedback_attachment_resource(api, uri)
