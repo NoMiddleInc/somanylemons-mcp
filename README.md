@@ -1,10 +1,10 @@
-# SoManyLemons MCP
+# ProducerSpark MCP
 
 AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more — just type `/lemons`.
 
 ## Browser research connection
 
-See [Claude and ChatGPT browser setup](docs/browser-setup.md) for the account sign-in flow and first read-only test. The initial pilot uses a custom connection; public directory installation is a separate publication step. No local package or copied API key is needed after the browser OAuth release.
+See [Claude and ChatGPT browser setup](docs/browser-setup.md) for the account sign-in flow and first read-only test. The initial pilot uses a custom connection; public directory installation is a separate publication step. Use `https://producerspark.com/mcp`, sign in to ProducerSpark, then ask: "Use ProducerSpark to download my prospect list as Excel." No local package or copied API key is needed.
 
 ## Install (one line)
 
@@ -14,7 +14,7 @@ curl -sL https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/ins
 
 The installer will:
 1. Install the `/lemons` command globally
-2. Ask for your API key (get one free at [somanylemons.com/developers/portal](https://somanylemons.com/developers/portal))
+2. Ask for your API key (get one free at [somanylemons.com/developers/portal](https://producerspark.com/developers/portal))
 3. Connect the MCP server
 
 Restart Claude Code after installing. That's it.
@@ -22,11 +22,11 @@ Restart Claude Code after installing. That's it.
 ### Manual install (if you prefer)
 
 ```bash
-# 1. Get an API key from https://somanylemons.com/developers/portal
+# 1. Get an API key from https://producerspark.com/developers/portal
 
 # 2. Register the MCP server
 claude mcp add --scope user --transport http somanylemons \
-  https://mcp.somanylemons.com/mcp \
+  https://producerspark.com/mcp \
   --header "X-API-Key: sml_YOUR_KEY"
 
 # 3. Install /lemons command
@@ -63,9 +63,9 @@ That's the only command. Describe what you want and it happens.
 ```
 /lemons (prompt)
     |
-MCP Server (mcp.somanylemons.com)
+MCP Server (producerspark.com/mcp)
     |
-Backend API (api.somanylemons.com)
+Backend API (api.producerspark.com)
 ```
 
 1. `/lemons` is a prompt that tells Claude how to use 19 content creation tools.
@@ -120,7 +120,7 @@ If you prefer to edit your config file directly instead of using `claude mcp add
   "mcpServers": {
     "somanylemons": {
       "type": "url",
-      "url": "https://mcp.somanylemons.com/mcp",
+      "url": "https://producerspark.com/mcp",
       "headers": {
         "X-API-Key": "sml_your_key_here"
       }
@@ -159,7 +159,7 @@ MIT
 
 ## Durable prospect and conference research
 
-The server also exposes 15 account-scoped durable task tools, including agency research, supported conference research, saved-answer pagination, waiting/reconnection and authenticated workbook resources. The backend performs research in production; the MCP process forwards authenticated requests. The conference identifier currently supported is `acams-las-vegas-2026`. Conference work keeps mandatory review and communication holds and cannot send customer or prospect emails. A queued goal does not establish successful source access or complete coverage.
+The server also exposes 18 account-scoped durable task tools, including agency research, supported conference research, saved-answer pagination, waiting/reconnection and authenticated workbook resources. The backend performs research in production; the MCP process forwards authenticated requests. The conference identifier currently supported is `acams-las-vegas-2026`. Conference work keeps mandatory review and communication holds and cannot send customer or prospect emails. A queued goal does not establish successful source access or complete coverage.
 
 Use a customer-owned API key with `tasks:read` and `tasks:write` for creation and controls, or `tasks:read` for retrieval only. The backend enforces active membership, organization, enabled configuration and existing allowances. Remote MCP sessions bind to a hash of the initializing key; a different key must initialize a new session. Existing content tools retain their original behavior. Standalone `producerspark-tasks-mcp` installation remains available for direct Claude Code use without the hosted content server. Claude Enterprise administrators must permit the selected MCP server; account scope and Enterprise login must be validated separately.
 

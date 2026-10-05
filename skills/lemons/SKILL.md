@@ -85,13 +85,13 @@ Run the Context Preload, then route directly to whatever the user asked for.
 
 **Step 1: Get API key**
 
-Ask: "Got an SML API key? Paste it here. No key? Get one free at https://somanylemons.com/developers/portal"
+Ask: "Got an SML API key? Paste it here. No key? Get one free at https://producerspark.com/developers/portal"
 
 - If they paste a key (starts with `sml_`): validate the format, move to step 2.
 - If they give an email: run this curl to sign up, then show them the key:
 
 ```bash
-curl -s -X POST https://api.somanylemons.com/api/v1/signup \
+curl -s -X POST https://api.producerspark.com/api/v1/signup \
   -H "Content-Type: application/json" \
   -d '{"email": "USER_EMAIL"}'
 ```
@@ -107,7 +107,7 @@ claude mcp remove somanylemons -s user 2>/dev/null; claude mcp remove somanylemo
 
 2. Add the MCP server with the correct config at user scope:
 ```bash
-claude mcp add --scope user --transport http somanylemons "https://mcp.somanylemons.com/mcp" --header "X-API-Key: USER_KEY_HERE"
+claude mcp add --scope user --transport http somanylemons "https://producerspark.com/mcp" --header "X-API-Key: USER_KEY_HERE"
 ```
 
 3. Install the /lemons command globally:
@@ -126,7 +126,7 @@ Only if they specifically ask for manual config, show this fallback:
   "mcpServers": {
     "somanylemons": {
       "type": "url",
-      "url": "https://mcp.somanylemons.com/mcp",
+      "url": "https://producerspark.com/mcp",
       "headers": {
         "X-API-Key": "sml_xxxxx"
       }

@@ -32,7 +32,7 @@ else
         echo "  🔑 Enter your SoManyLemons API key (starts with sml_)."
         echo ""
         echo "  Don't have one? Get it at:"
-        echo "  → https://somanylemons.com/developers/portal"
+        echo "  → https://producerspark.com/developers/portal"
         echo ""
         read -rp "  API Key: " API_KEY
     fi
@@ -40,13 +40,13 @@ else
     if [[ -z "$API_KEY" || "$API_KEY" != sml_* ]]; then
         echo ""
         echo "  ✗ Invalid key. Must start with 'sml_'."
-        echo "    Get one at: https://somanylemons.com/developers/portal"
+        echo "    Get one at: https://producerspark.com/developers/portal"
         exit 1
     fi
 
     if command -v claude &>/dev/null; then
         claude mcp add --scope user --transport http somanylemons \
-            "https://mcp.somanylemons.com/mcp" \
+            "https://producerspark.com/mcp" \
             --header "X-API-Key: $API_KEY" 2>/dev/null
         echo "  ✓ MCP server configured"
     else
@@ -57,7 +57,7 @@ else
     "mcpServers": {
       "somanylemons": {
         "type": "url",
-        "url": "https://mcp.somanylemons.com/mcp",
+        "url": "https://producerspark.com/mcp",
         "headers": {
           "X-API-Key": "'"$API_KEY"'"
         }
