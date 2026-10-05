@@ -115,11 +115,6 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
 
         def handler(request):
             calls.append(request)
-            if not request.url.params.get("view") and request.method == "GET":
-                return httpx.Response(200, json={"data": {
-                    "events": [], "state": "completed",
-                    "apollo_credit_budget": {"remaining_credits": 0},
-                }})
             return httpx.Response(200, json={"data": task})
 
         arguments = {"goal_id": 43}
@@ -276,6 +271,11 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
 
         def handler(request):
             calls.append(request)
+            if not request.url.params.get("view") and request.method == "GET":
+                return httpx.Response(200, json={"data": {
+                    "events": [], "state": "completed",
+                    "apollo_credit_budget": {"remaining_credits": 0},
+                }})
             return httpx.Response(200, json={"data": task})
 
         result = await invoke_task(
