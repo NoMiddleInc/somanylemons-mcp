@@ -178,13 +178,13 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             "provider_email_status": "verified", "email_content_hash": "saved-hash",
             "email_candidates": [{"email": "person@example.com", "source": "Apollo", "status": "unverified"}],
             "evidence_refs": [{"source_url": "https://example.com", "quote_omitted_for_delivery_policy": True}],
-            "requested_company_identity_hints": {"hq_city": "Chicago"},
+            "requested_company_identity_hints": {"hq_city": "Chicago"}, "requested_company_name": "Requested company",
             "public_sources": [{"url": f"https://example.com/{i}"} for i in range(4)],
             "field_provenance": {f"field{i}": {"source": "Apollo", "source_operation_id": 7, "uncertainty": "x" * 400} for i in range(42)}}
         answer = compact_research_answer({"id": 79, "business_answer": {"contacts": [row]}})
         projected = answer["contacts"][0]
         for field in ("session_date", "session_time", "room", "organizer_company", "organizer_title",
-                      "recorded_organizer_email", "email_content_hash", "provider_email_status", "email_candidates", "requested_company_identity_hints"):
+                      "recorded_organizer_email", "email_content_hash", "provider_email_status", "email_candidates", "requested_company_identity_hints", "requested_company_name"):
             self.assertEqual(projected[field], row[field])
         self.assertFalse(projected["email_candidates_truncated"])
         self.assertTrue(projected["evidence_refs"][0]["quote_omitted_for_delivery_policy"])
@@ -193,6 +193,22 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(projected["field_provenance"]["field0"]["source_operation_id"], 7)
         self.assertTrue(projected["field_provenance_truncated"])
         self.assertTrue(projected["source_references_truncated"])
+
+    def test_current_review_scope_preserved_with_only_four_manifest_bound_checks(self):
+        checks = [{"obligation": gate, "artifact_id": artifact_id, "manifest_hashes": [digest]}
+            for artifact_id, digest in [(1, "old"), (2, "current")] for gate in (
+                "business_artifact_content", "business_request_fulfillment", "whole_request_acceptance", "customer_response_truthfulness")]
+        task = {"id": 79, "business_answer": {"contacts": [], "contract_revision": 2,
+            "contract_hash": "contract", "current_policy_hash": "policy", "review_scope_current": True,
+            "fulfillment_review": {"passed": True, "manifest_hash": "current"}, "scope_quality_checks": checks}}
+        projected = compact_research_answer(task)["business_answer"]
+        self.assertEqual(projected["contract_hash"], "contract")
+        self.assertEqual(projected["current_policy_hash"], "policy")
+        self.assertTrue(projected["review_scope_current"])
+        self.assertEqual(len(projected["scope_quality_checks"]), 4)
+        self.assertTrue(all(check["artifact_id"] == 2 for check in projected["scope_quality_checks"]))
+        self.assertEqual(projected["scope_quality_checks_total"], 8)
+        self.assertTrue(projected["scope_quality_checks_truncated"])
 
 
 if __name__ == "__main__":

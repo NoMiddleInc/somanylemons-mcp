@@ -80,14 +80,27 @@ def saved_business_answer(task, result, *, contact_page, source_page):
     result["business_answer"] = {key: value for key, value in saved.items() if key in {
         "counts", "coverage", "spec", "requested", "delivery", "citation_basis", "limitations", "full_request_fulfilled",
         "original_goal_id", "original_goal_obligation", "interim_results", "closure", "workflow", "state", "fulfillment", "next_action", "blockers",
+        "contract_revision", "contract_hash", "current_policy_hash", "review_scope_current", "fulfillment_review",
     }}
+    scope_checks = saved.get("scope_quality_checks") or []
+    manifest_hash = (saved.get("fulfillment_review") or {}).get("manifest_hash")
+    bound_artifacts = [check.get("artifact_id") for check in scope_checks if isinstance(check, dict)
+                       and manifest_hash and manifest_hash in check.get("manifest_hashes", [])]
+    artifact_ids = bound_artifacts or [check.get("artifact_id") for check in scope_checks if isinstance(check, dict)]
+    current_artifact = max((value for value in artifact_ids if type(value) is int), default=None)
+    selected_checks = {check["obligation"]: check for check in scope_checks if isinstance(check, dict)
+                       and check.get("artifact_id") == current_artifact and check.get("obligation") in {
+                           "business_artifact_content", "business_request_fulfillment", "whole_request_acceptance", "customer_response_truthfulness"}}
+    result["business_answer"]["scope_quality_checks"] = list(selected_checks.values())
+    result["business_answer"]["scope_quality_checks_total"] = len(scope_checks)
+    result["business_answer"]["scope_quality_checks_truncated"] = len(scope_checks) > len(selected_checks)
     result["request"] = {"request": contract.get("request"), "spec": contract.get("spec")}
     fields = {
         "id", "name", "company", "title", "role", "email", "linkedin", "linkedin_status", "location", "industry",
         "website_url", "company_website", "session_title", "session_date", "session_time", "room", "notes", "email_status", "email_verified_at",
         "email_source", "email_source_url", "email_observed_at", "enrichment_status",
         "enrichment_source", "enriched_on", "fit", "reason", "uncertainty", "email_content_hash", "provider_email_status",
-        "researchedOn", "employees", "action", "organizer_company", "organizer_title", "recorded_organizer_email",
+        "researchedOn", "employees", "action", "organizer_company", "organizer_title", "recorded_organizer_email", "requested_company_name",
     }
     result["contacts"] = []
     for row in rows[(contact_page - 1) * 5:contact_page * 5]:
