@@ -15,6 +15,8 @@ The server extracts it and uses it for all API calls in that session.
 import argparse
 import contextlib
 import logging
+import hashlib
+import time
 import os
 
 from starlette.applications import Starlette
@@ -32,14 +34,35 @@ logger = logging.getLogger(__name__)
 import somanylemons_mcp.server as _srv
 
 
+class SessionKeyBindings:
+    """Bounded credential hashes; never retain a plaintext tenant key."""
+    def __init__(self, limit=1024, ttl=1800):
+        self.owners = {}
+        self.limit, self.ttl = limit, ttl
+
+    def check(self, session_id, key):
+        now = time.monotonic()
+        self.owners = {sid: pair for sid, pair in self.owners.items() if pair[1] > now}
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        if session_id:
+            known = self.owners.get(session_id)
+            if known is None or known[0] != digest:
+                return False
+            self.owners[session_id] = (digest, now + self.ttl)
+        return bool(session_id) or len(self.owners) < self.limit
+
+    def bind(self, session_id, key):
+        self.owners[session_id] = (hashlib.sha256(key.encode()).hexdigest(), time.monotonic() + self.ttl)
+
+
 def _create_app() -> ASGIApp:
     """Build the ASGI app with Streamable HTTP endpoint."""
 
+    bindings = SessionKeyBindings()
     session_manager = StreamableHTTPSessionManager(
         app=_srv.server,
         json_response=False,
         stateless=False,
-        session_idle_timeout=1800.0,
     )
 
     async def health(request: Request):
@@ -85,8 +108,24 @@ def _create_app() -> ASGIApp:
                 await response(scope, receive, send)
                 return
 
-            _srv._session_api_key.set(client_key)
-            await session_manager.handle_request(scope, receive, send)
+            session_id = request.headers.get("mcp-session-id", "")
+            if not bindings.check(session_id, client_key):
+                response = JSONResponse({"error": "MCP session is unavailable for this API key; initialize a new session."}, status_code=403)
+                await response(scope, receive, send)
+                return
+
+            async def bound_send(message):
+                if message["type"] == "http.response.start":
+                    for header, value in message.get("headers", []):
+                        if header.lower() == b"mcp-session-id":
+                            bindings.bind(value.decode(), client_key)
+                await send(message)
+
+            token = _srv._session_api_key.set(client_key)
+            try:
+                await session_manager.handle_request(scope, receive, bound_send)
+            finally:
+                _srv._session_api_key.reset(token)
         else:
             await starlette_app(scope, receive, send)
 

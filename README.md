@@ -152,3 +152,11 @@ Then add to your MCP config:
 ## License
 
 MIT
+
+## Durable prospect and conference research
+
+The server also exposes 15 account-scoped durable task tools, including agency research, supported conference research, saved-answer pagination, waiting/reconnection and authenticated workbook resources. The backend performs research in production; the MCP process forwards authenticated requests. The conference identifier currently supported is `acams-las-vegas-2026`. Conference work keeps mandatory review and communication holds and cannot send customer or prospect emails. A queued goal does not establish successful source access or complete coverage.
+
+Use a customer-owned API key with `tasks:read` and `tasks:write` for creation and controls, or `tasks:read` for retrieval only. The backend enforces active membership, organization, enabled configuration and existing allowances. Remote MCP sessions bind to a hash of the initializing key; a different key must initialize a new session. Existing content tools retain their original behavior. Standalone `producerspark-tasks-mcp` installation remains available for direct Claude Code use without the hosted content server. Claude Enterprise administrators must permit the selected MCP server; account scope and Enterprise login must be validated separately.
+
+The task transport is vendored from backend commit `5bb0a30e` to keep the hosted image self-contained. Update it from the reviewed standalone package and run the task-bridge, session-isolation and existing content checks together before release. Do not insert real keys into this repository.
