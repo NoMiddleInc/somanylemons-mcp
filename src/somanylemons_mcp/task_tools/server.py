@@ -196,10 +196,28 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     return result
 
 
+def brief_answer(answer):
+    """Keep status and coverage truthful without unsolicited sample rows or internals."""
+    hidden = {"contacts", "sources", "pagination", "email_gaps", "public_unverified_email_examples",
+              "public_unverified_email_example_scope", "steps", "step_metadata_returned",
+              "step_preview_scope", "step_preview_complete", "steps_total"}
+    result = {k: v for k, v in answer.items() if k not in hidden and v is not None}
+    if isinstance(result.get("research_answer"), dict):
+        result["research_answer"] = {k: v for k, v in result["research_answer"].items() if k != "agencies"}
+    result["details_available"] = "Use get_research_answer(details=true) for samples/drafts; read_task_spreadsheet for the full workbook."
+    return result
+
+
 def create_server(api: TaskApiClient) -> FastMCP:
     server = FastMCP(
         "ProducerSpark Tasks",
         instructions=(
+            "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link. "
+            "Give the requested result first; omit sample contact tables, internal steps and repeated caveats unless asked. "
+            "For 'my ICP' use get_my_icp; for 'my prospect list' or 'download my list' use get_prospect_list. "
+            "Return download_url as a clickable Markdown link with filename. Links expire after ten minutes; request a new link when expired. "
+            "To analyze or clean a workbook use read_task_spreadsheet: it reads all normal-size saved rows in one call. "
+            "Do not page contacts five at a time to retrieve a whole workbook. Never claim a workbook is inaccessible before trying these tools. "
             "Manage the authenticated account's durable customer research requests. Read the current task before controls; "
             "use its version and allowed_actions. For every write generate a UUID idempotency_key once and reuse it after "
             "transport failures. Only create or amend work the user requested. Research may lead to delivery through the "
@@ -242,7 +260,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             events = task.get("events", [])
             answer["operator_history"] = [{key: event[key] for key in ("id", "event_type", "created_at") if key in event} for event in events[-20:]]
             answer["operator_history_total"] = len(events)
-        return answer
+        return answer if include_history else brief_answer(answer)
 
     @server.tool(annotations=READ)
     async def get_research_answer(
@@ -250,17 +268,19 @@ def create_server(api: TaskApiClient) -> FastMCP:
         agency_page: Annotated[int, Field(ge=1)] = 1,
         contact_page: Annotated[int, Field(ge=1)] = 1,
         source_page: Annotated[int, Field(ge=1)] = 1,
+        details: bool = False,
     ) -> dict:
-        """Read compact saved quantitative/qualitative results, source-backed drafts and verification dates. Copy saved draft strings character-for-character, including Unicode punctuation and paragraphs. Prefer this for customer questions; get_task includes bounded current steps and explicitly requested operator history. This never starts research or delivery."""
+        """Read a brief saved result and actual coverage by default. Set details=true for requested sample contacts, source-backed drafts and verification dates. Copy saved drafts exactly. For a whole prospect list use get_prospect_list/read_task_spreadsheet. Never starts research or delivery."""
         task = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}", params={"view": "answer"})
-        return compact_research_answer(task, agency_page, contact_page, source_page)
+        answer = compact_research_answer(task, agency_page, contact_page, source_page)
+        return answer if details or max(agency_page, contact_page, source_page) > 1 else brief_answer(answer)
 
     @server.tool(annotations=READ)
     async def wait_for_task(
         goal_id: PositiveId,
         timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 45,
     ) -> dict:
-        """Wait for existing background research to complete or need attention. On timeout call again with the same goal_id; work persists independently of Claude. Returns the full saved results and a truthful wait_status."""
+        """Wait for existing background research; returns brief saved status/coverage. On timeout call again with the same goal_id. Use explicit read tools for requested files or detail."""
         deadline = time.monotonic() + timeout_seconds
         stop_states = {
             "completed", "satisfied", "cancelled", "superseded", "failed",
@@ -269,7 +289,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         task = None
         while True:
             if task is not None and deadline - time.monotonic() < 1:
-                return {"wait_status": "still_running", "task": compact_research_answer(task)}
+                return {"wait_status": "still_running", "task": brief_answer(compact_research_answer(task))}
             task = await api.request(
                 "GET", f"/api/v1/agent-tasks/{goal_id}",
                 params={"view": "answer"},
@@ -277,10 +297,10 @@ def create_server(api: TaskApiClient) -> FastMCP:
             )
             state = task.get("state")
             if state in stop_states:
-                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": compact_research_answer(task)}
+                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": brief_answer(compact_research_answer(task))}
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return {"wait_status": "still_running", "task": compact_research_answer(task)}
+                return {"wait_status": "still_running", "task": brief_answer(compact_research_answer(task))}
             await asyncio.sleep(min(5, remaining))
 
     @server.tool(annotations=WRITE)
@@ -425,21 +445,27 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "POST", f"/api/v1/agent-tasks/schedules/{schedule_id}", body={"is_enabled": is_enabled}
         )
 
-    @server.tool(annotations=READ, structured_output=False)
-    async def get_task_artifact(goal_id: PositiveId, artifact_id: PositiveId) -> list[ResourceLink]:
-        """Get a saved artifact as an authenticated MCP resource. Read the resource to obtain the workbook bytes; this never triggers delivery."""
-        goal = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}")
-        if not any(str(row.get("id")) == str(artifact_id) for row in goal.get("artifacts", [])):
-            raise TaskApiError("No accessible artifact with that ID belongs to this task.")
-        return [
-            ResourceLink(
-                type="resource_link",
-                uri=f"producerspark-task-artifact://{goal_id}/{artifact_id}",
-                name=f"task-{goal_id}-artifact-{artifact_id}.xlsx",
-                mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                description="Saved task deliverable; backend authorization and artifact checks apply on read.",
-            )
-        ]
+    @server.tool(annotations=READ)
+    async def get_task_artifact(goal_id: PositiveId, artifact_id: PositiveId) -> dict:
+        """Download the original saved Excel workbook. Return its download_url as a clickable link, not a resource URI. No new research or customer delivery."""
+        return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/download-link")
+
+    @server.tool(annotations=READ)
+    async def read_task_spreadsheet(goal_id: PositiveId, artifact_id: PositiveId, sheet_name: str | None = None) -> dict:
+        """Read the complete saved prospect spreadsheet in one call for analysis, deduping or cleaning; no five-contact pagination. Includes all sheets by default and explicit truncation for oversized files. Do not print rows unless asked."""
+        return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/spreadsheet",
+                                 params={"sheet_name": sheet_name} if sheet_name else None)
+
+    @server.tool(annotations=READ)
+    async def get_my_icp(config_id: PositiveId | None = None) -> dict:
+        """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use whenever the user asks about their ICP. Never infer an ICP from conference attendees."""
+        return await api.request("GET", "/api/v1/agent-tasks/icp", params={"config_id": config_id} if config_id else None)
+
+    @server.tool(annotations=READ)
+    async def get_prospect_list(goal_id: PositiveId | None = None, config_id: PositiveId | None = None) -> dict:
+        """Get my saved prospect list as a downloadable Excel file. Uses the latest saved task workbook unless a task is specified. Returns actual task state; saved data can exist before task completion. No research or sends."""
+        return await api.request("GET", "/api/v1/agent-tasks/prospect-list",
+                                 params={k: v for k, v in {"goal_id": goal_id, "config_id": config_id}.items() if v is not None})
 
     @server.resource(
         "producerspark-task-artifact://{goal_id}/{artifact_id}",

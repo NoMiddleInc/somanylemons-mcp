@@ -2,7 +2,7 @@
 from .task_tools.client import TaskApiClient, TaskApiConfig, TaskApiError
 from .task_tools.server import create_server
 
-TASK_TOOL_NAMES = frozenset({"list_tasks", "get_task", "get_research_answer", "wait_for_task", "create_research_request", "create_conference_research_request", "supply_agency_names", "pause_task", "resume_task", "cancel_task", "retry_task", "list_schedules", "create_research_schedule", "set_schedule_enabled", "get_task_artifact"})
+TASK_TOOL_NAMES = frozenset({"list_tasks", "get_task", "get_research_answer", "wait_for_task", "create_research_request", "create_conference_research_request", "supply_agency_names", "pause_task", "resume_task", "cancel_task", "retry_task", "list_schedules", "create_research_schedule", "set_schedule_enabled", "get_task_artifact", "read_task_spreadsheet", "get_my_icp", "get_prospect_list"})
 
 SCHEMA_SERVER = create_server(TaskApiClient(TaskApiConfig("https://schema.invalid", "schema-only")))
 

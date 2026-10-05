@@ -7,7 +7,7 @@ from somanylemons_mcp.remote import SessionKeyBindings
 class BridgeTests(unittest.IsolatedAsyncioTestCase):
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
-  self.assertEqual(len(tools),15)
+  self.assertEqual(len(tools),18)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
   self.assertNotIn('production_capture',tools['create_conference_research_request'].inputSchema['properties'])
@@ -29,6 +29,30 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
 
  async def test_missing_key_rejected_without_fallback(self):
   with self.assertRaises(TaskApiError):await invoke_task('list_tasks',{},api_url='https://example.com',api_key='')
+
+ async def test_full_spreadsheet_and_download_are_single_scoped_calls(self):
+  calls=[]
+  def handler(request):
+   calls.append(request)
+   if request.url.path.endswith('/download-link'):
+    return httpx.Response(200,json={'data':{'filename':'237-prospects.xlsx','download_url':'https://api.producerspark.com/api/v1/agent-tasks/download/signed','sha256':'saved-hash'}})
+   return httpx.Response(200,json={'data':{'sheets':[{'name':'Prospects','headers':['Name'],'rows':[[f'Person {i}'] for i in range(237)],'row_count':237,'truncated':False}]}})
+  transport=httpx.MockTransport(handler)
+  result=await invoke_task('get_task_artifact',{'goal_id':34,'artifact_id':7},api_url='https://example.com',api_key='owner',transport=transport)
+  self.assertIn('download_url',str(result))
+  result=await invoke_task('read_task_spreadsheet',{'goal_id':34,'artifact_id':7},api_url='https://example.com',api_key='owner',transport=transport)
+  self.assertIn('Person 236',str(result));self.assertEqual(len(calls),2)
+  self.assertTrue(all(r.headers['x-api-key']=='owner' for r in calls))
+  self.assertTrue(calls[0].url.path.endswith('/34/artifacts/7/download-link'))
+
+ async def test_saved_icp_tool_uses_scoped_facade_and_concise_guidance(self):
+  from somanylemons_mcp.task_bridge import SCHEMA_SERVER
+  calls=[]
+  def handler(request):
+   calls.append(request);return httpx.Response(200,json={'data':{'criteria':{'target':'Saved target'},'download_url':'https://example.com/file'}})
+  result=await invoke_task('get_my_icp',{},api_url='https://example.com',api_key='owner',transport=httpx.MockTransport(handler))
+  self.assertIn('Saved target',str(result));self.assertEqual(calls[0].url.path,'/api/v1/agent-tasks/icp')
+  self.assertIn('75 words',SCHEMA_SERVER.instructions)
 
 class SessionBindingTests(unittest.TestCase):
  def test_foreign_key_and_unknown_session_rejected(self):
