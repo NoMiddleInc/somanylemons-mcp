@@ -32,4 +32,4 @@ GET /api/v1/agent-tasks/{requested_goal_id}/feedback-snapshots/{delivery_job_id}
 
 The filename and SHA-256 are query parameters. The response must match the saved raw size/hash. Both standalone task resources and hosted JSON-RPC resource reads preserve the recorded XLSX or CSV MIME type. Foreign paths, unsafe filenames, duplicate query values, wrong hashes, wrong revisions and corrupted bytes fail closed.
 
-These URLs require authentication; they are not unsigned share links. A saved delivery job is never a TaskArtifact ID. No local filesystem fallback or new credential is involved. The existing 20 task tools and 49 hosted tools remain available.
+These URLs require authentication; they are not unsigned share links. A saved delivery job is never a TaskArtifact ID. No local filesystem fallback or new credential is involved. All existing tools remain available; the generic business research addition brings the current set to 21 task tools and 50 hosted tools.

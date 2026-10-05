@@ -18,6 +18,7 @@ from .client import TaskApiClient, TaskApiConfig, TaskApiError
 from .feedback_review import brief_feedback_projection, feedback_projection, read_feedback_attachment_resource
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
+from .business_research import BusinessResearchSpec, saved_business_answer
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=10)]
@@ -186,6 +187,10 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
         if type(current) is int and current > 0:
             result["answer_is_current_recorded_goal"] = current == task.get("id")
         return bounded_examples_and_artifacts(result)
+    business = saved_business_answer(task, result, contact_page=contact_page, source_page=source_page)
+    if business is not None:
+        business["blocker"] = public_blocker(task.get("blocker"))
+        return bounded_examples_and_artifacts(business)
     answer = task.get("research_answer")
     result["research_answer"] = dict(answer) if isinstance(answer, dict) else None
     agencies = answer.get("agencies", []) if isinstance(answer, dict) else []
@@ -291,7 +296,7 @@ def brief_answer(answer):
         result["research_answer"] = {k: v for k, v in result["research_answer"].items() if k != "agencies"}
     if "feedback_review_snapshot" in result:
         result["feedback_review_snapshot"] = brief_feedback_projection(result["feedback_review_snapshot"])
-    result["details_available"] = "Use get_research_answer(details=true) for samples/drafts; read_task_spreadsheet for the full workbook."
+    result["details_available"] = "Use get_research_answer(details=true) for saved samples and provenance; read_task_spreadsheet for the full workbook."
     return result
 
 
@@ -328,6 +333,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Use the exact recorded status meaning: completed_public_email_unavailable means the completed public fallback did not record an address. Never paraphrase this as Apollo returning no result, unavailable in Apollo, or an employer/government cause. Do not add a structural public-email availability theory absent recorded evidence. Worker progress such as 135/136 counts task steps, never people or contacts. "
             "Email provenance calendar summaries group each distinct saved clock by calendar date; exact timestamp groups are paginated with source_page. Report their explicit totals and omitted counts, never treat a preview as all records. Contact pages contain five rows; use the returned pagination instead of inventing a workbook page size. "
             "Manage the authenticated account's durable customer research requests. Read the current task before controls; use its version and allowed_actions. "
+            "Use create_business_research_request for new business-contact and conference questions across any industry or role. Explicit companies and roles govern this request; do not silently impose an older insurance ICP. Existing saved-list agency research remains a separate compatibility tool. Generic business results use business_answer with saved coverage and provenance. Future customer deliveries omit draft-email content and draft sequences. "
             "Before agency research, discover the account's enabled configurations with list_tasks and use campaign_id for the saved list/ICP the user selected. An OAuth login workspace does not hide the account's own agents. Never guess another customer's agent or switch canonical list bindings. "
             "For every write generate a UUID idempotency_key once and reuse it after "
             "transport failures. Only create or amend work the user requested. Research may lead to delivery through the "
@@ -434,6 +440,23 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await asyncio.sleep(min(5, remaining))
 
     @server.tool(annotations=WRITE)
+    async def create_business_research_request(
+        request: Annotated[str, Field(min_length=1, max_length=10000)],
+        idempotency_key: UUID,
+        config_id: PositiveId | None = None,
+        spec: BusinessResearchSpec | None = None,
+    ) -> dict:
+        """Create autonomous business-contact or conference research for any industry and role, such as Dell's CIO, executives at supplied companies, or published conference speakers. Provide the actual customer question; optional spec sets companies, roles, person_name, event/publisher URLs, fields and requested count (default 15, maximum 500; all=true cannot include a count). Requested coverage never expands account/provider spending limits. The production backend plans, researches, independently checks and delivers to the authorized customer under current policy; unfinished research and uncertain external effects remain held. No prospect outreach or draft-email delivery. Return the goal ID, then use wait_for_task/get_research_answer/get_task_artifact. Reuse this UUID after an uncertain response; never create replacement work."""
+        body = {"request": request, "idempotency_key": str(idempotency_key)}
+        if config_id is not None:
+            body["config_id"] = config_id
+        if spec is not None:
+            body["spec"] = spec.model_dump(exclude_none=True)
+        return compact_research_answer(
+            await api.request("POST", "/api/v1/agent-tasks/business-research", body=body)
+        )
+
+    @server.tool(annotations=WRITE)
     async def create_research_request(
         agencies: Agencies,
         idempotency_key: UUID,
@@ -442,7 +465,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         title: Annotated[str, Field(max_length=200)] | None = None,
         count: ContactCount | None = None,
     ) -> dict:
-        """Create requested agency research (1–10 contacts) with the account's enabled agent and budget. Discover agents with list_tasks. For research against a selected saved list/ICP, pass its campaign_id from list_golden_lists; this applies that customer-owned list's criteria to this request without changing the default agent. Shared read access does not authorize research for another owner. Delivery follows backend policy."""
+        """Create the saved-criteria agency workflow (1–10 contacts) with the account's enabled agent and budget. For broader business/industry/role research or conference questions, use create_business_research_request. Discover agents with list_tasks. Pass campaign_id from list_golden_lists for a selected customer-owned saved list without changing the default agent. Shared read access does not authorize research for another owner. Delivery follows backend policy."""
         body = {"agencies": agency_payload(agencies), "idempotency_key": str(idempotency_key)}
         body.update(
             {
