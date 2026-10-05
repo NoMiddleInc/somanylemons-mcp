@@ -53,8 +53,8 @@ def list_task_navigation(response):
             row["outcome_summary"] = (
                 f"Read get_research_answer(goal_id={current}) for current roster identity counts and their counting basis, recorded email clocks, "
                 "research gaps and all final-delivery requirements. This row is navigation metadata; listed progress "
-                "counts worker steps for the original goal. Artifact row_count counts speaker/session appearances, "
-                "not roster identity keys or independently resolved individuals. A review blocker or worker-stage completion alone never establishes final readiness."
+                "counts worker steps for the original goal. Artifact row_count describes rows in that exact saved file; "
+                "canonical raw appearance totals can differ from combined customer-presentation rows. Never transfer one file's totals to another. A review blocker or worker-stage completion alone never establishes final readiness."
             )
         else:
             row["current_answer_goal_id"] = None
@@ -75,7 +75,7 @@ def list_task_navigation(response):
             row["outcome_summary"] = (
                 "Current answer lineage is not recorded by this response. Saved artifact metadata may identify a historical "
                 "snapshot; it never proves current research state or readiness. Read the requested task before drawing conclusions. "
-                "Listed progress counts original-goal worker steps; artifact row_count counts appearances, not roster identity keys or independently resolved individuals."
+                "Listed progress counts original-goal worker steps; artifact row_count describes that exact saved file, which can differ from canonical raw appearance or roster-key totals."
             )
     return result
 
@@ -160,7 +160,7 @@ def bounded_examples_and_artifacts(answer):
             else None
         ),
         "content_hash": recorded["hash"] if recorded else None,
-        "basis": "Saved scoped artifact metadata. Retrieve the artifact to verify available bytes; this read asserts no validation or final delivery clearance.",
+        "basis": "Saved scoped artifact metadata. An authorized saved file may be inspected or linked here while final send gates remain held; a do-not-send instruction does not prohibit already-requested review/download inspection. Retrieve the artifact to verify available bytes; this read asserts no validation or final delivery clearance and requires no additional permission for the requested inspection.",
         "is_live_working_document": False,
         "reading_authorizes_send": False,
     }

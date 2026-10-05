@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from .client import TaskApiClient, TaskApiConfig, TaskApiError
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
+from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=10)]
@@ -288,7 +289,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
     server = FastMCP(
         "ProducerSpark Tasks",
         instructions=(
-            "Use list_tasks to navigate obligations, not to answer final research or delivery readiness. For a conference row with current_answer_goal_id, read get_research_answer for that exact goal. Listed original-goal worker progress and its review blocker are not the latest outcome's counts or all required delivery gates. Artifact row_count counts speaker/session appearances, not unique people; Email-cell counts likewise differ from unique people with a recorded email. For missing emails, use enrichment_summary.missing_email_people and missing_email_enrichment_status_counts_by_person. Global unfinished people can include people with a recorded email; use unfinished_with_recorded_email_people and unfinished_without_recorded_email_people instead of adding all global blockers to the missing-email causes. Completed enrichment without a selected address does not prove any particular provider returned empty results or that an address is genuinely unavailable. Identity unresolved does not mean unresolvable, structurally unavailable, or impossible to improve with further evidence. Use recorded_email_date_summary's separate clocks when present. Never assign a date to all saved_result_reused or completed people from an example, one source, a common timestamp, or a status label. Paginated exact/calendar groups retain their explicit omitted totals; a preview is not the entire cohort. Status counts describe a cumulative saved snapshot, not new provider calls, new sources opened, or actions performed by the current goal. A saved succeeded stage does not prove completion happened after the user's Claude session ended or support an elapsed-time calculation without the relevant recorded timestamps. conference_answer.sources describes captured organizer/program source evidence. Separately report recorded email-source observations from row provenance and public-source receipts; do not claim the organizer is the only observed source in the entire workflow while public email-source evidence is also recorded. Declared source_urls alone remain unobserved targets. Preserve the distinction between observed source access and independently proven full roster/session coverage. preliminary_review_artifact refers to the separate interim-snapshot capability. Its null value does not mean there is no saved workbook available for HERE-first inspection. A recorded canonical_review_artifact availability fact with matched scope/hash/validation can establish a validated review file; otherwise a top-level listed artifact only establishes retrieval availability. Offer or retrieve an authorized clearly labeled partial workbook here, state its actual gaps, and keep final fulfillment and sends held. Do not label an immutable saved artifact a live working document or say clearing internal review alone completes the research.  A positive current_answer_goal_id is backend-proven scoped navigation, including pending continuations without a new artifact. If answer_is_current_recorded_goal is false, follow that ID for current progress unless the user explicitly asks for the historical snapshot. saved_review_workbook.metadata_recorded establishes saved metadata and a scoped retrieval action, not verified bytes or final delivery; use its artifact_retrieval to inspect the authorized partial file here. Each email clock summary is complete for that distinct clock; missing-email status and unfinished-email-presence are separate partitions, not additive cohorts. "
+            "Use list_tasks to navigate obligations, not to answer final research or delivery readiness. For a conference row with current_answer_goal_id, read get_research_answer for that exact goal. Listed original-goal worker progress and its review blocker are not the latest outcome's counts or all required delivery gates. Artifact row_count describes rows in that exact saved file. A canonical raw speaker/session-appearance count can differ from a customer presentation's combined roster rows; never transfer one file's count to another. Email-cell counts likewise differ from roster identity keys and distinct recorded addresses. For missing emails, use enrichment_summary.missing_email_people and missing_email_enrichment_status_counts_by_person. Global unfinished people can include people with a recorded email; use unfinished_with_recorded_email_people and unfinished_without_recorded_email_people instead of adding all global blockers to the missing-email causes. Completed enrichment without a selected address does not prove any particular provider returned empty results or that an address is genuinely unavailable. Identity unresolved does not mean unresolvable, structurally unavailable, or impossible to improve with further evidence. Use recorded_email_date_summary's separate clocks when present. A saved verified email status is not a fresh deliverability check and does not establish a recorded verification date. Missing verification/enrichment clocks stay unknown; never infer a person's review or verification date from their email observation date. Never assign a date to all saved_result_reused or completed people from an example, one source, a common timestamp, or a status label. Paginated exact/calendar groups retain their explicit omitted totals; a preview is not the entire cohort. Status counts describe a cumulative saved snapshot, not new provider calls, new sources opened, or actions performed by the current goal. A saved succeeded stage does not prove completion happened after the user's Claude session ended or support an elapsed-time calculation without the relevant recorded timestamps. conference_answer.sources describes captured organizer/program source evidence. Separately report recorded email-source observations from row provenance and public-source receipts; do not claim the organizer is the only observed source in the entire workflow while public email-source evidence is also recorded. Declared source_urls alone remain unobserved targets. Preserve the distinction between observed source access and independently proven full roster/session coverage. preliminary_review_artifact refers to the separate interim-snapshot capability. Its null value does not mean there is no saved workbook available for HERE-first inspection. A recorded canonical_review_artifact availability fact with matched scope/hash/validation can establish a validated review file; otherwise a top-level listed artifact only establishes retrieval availability. Offer or retrieve an authorized clearly labeled partial workbook here, state its actual gaps, and keep final fulfillment and sends held. A do-not-send instruction does not prohibit already-requested saved-file inspection or download here. Do not ask for additional permission to read or link the scoped saved file the user requested for review; this retrieval never authorizes email or clears send gates. Do not label an immutable saved artifact a live working document or say clearing internal review alone completes the research.  A positive current_answer_goal_id is backend-proven scoped navigation, including pending continuations without a new artifact. If answer_is_current_recorded_goal is false, follow that ID for current progress unless the user explicitly asks for the historical snapshot. saved_review_workbook.metadata_recorded establishes saved metadata and a scoped retrieval action, not verified bytes or final delivery; use its artifact_retrieval to inspect the authorized partial file here. Each email clock summary is complete for that distinct clock; missing-email status and unfinished-email-presence are separate partitions, not additive cohorts. "
             "For conference cardinality, follow enrichment_summary.identity_count_basis: unique_people and per-person totals can count saved name/company roster keys containing aliases, not independently resolved distinct individuals. Label that basis as roster entries or roster identity keys. Distinguish email-bearing roster keys, speaker/session email cells and distinct_recorded_email_addresses; use recorded_email_address_count_basis and the shared-address group counts when present. Newly filled roster keys need not add the same number of distinct addresses. Never infer identities or fresh deliverability from a shared address, or delete or merge alias rows. Preserve recorded rows, counts, clocks and every research/delivery gate. "
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link. "
             "Give the requested result first; omit sample contact tables, internal steps and repeated caveats unless asked. "
@@ -307,7 +308,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "For an immediate research answer, create the request once and use wait_for_task repeatedly until completed or a real blocker appears. "
             "A wait timeout means work continues in production; reuse the same goal_id, never recreate the request. "
             "Use get_research_answer for a compact customer answer from the task's research_answer field, including its quantitative and qualitative findings. "
-            "Use get_task for compact current steps and control metadata. Request include_history only for operator event identifiers/dates. "
+            "get_task, get_research_answer and wait_for_task follow the backend-recorded current answer by default. historical_snapshot=true reads the exact requested original goal. Returned id/version/allowed_actions belong together; requested_goal_controls and requested_goal_progress describe the original goal separately. Request include_history only for bounded operator event identifiers/dates; grouped history that does not identify the returned goal remains explicitly unavailable, not proof of no earlier email. "
             "apollo_credit_budget is current shared Apollo lookup authority; its numeric credit fields count conservative attempted billable lookup units, not provider balance or invoiced charges. "
             "Keep current allowance separate from recorded blocker text: an earlier monthly quota blocker does not establish today's allowance. Missing allowance fields are unknown, never zero. "
             "Available lookups do not clear review, model or source guards, authorize a retry, or prove completion. "
@@ -331,10 +332,11 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return list_task_navigation(response)
 
     @server.tool(annotations=READ)
-    async def get_task(goal_id: PositiveId, include_history: bool = False) -> dict:
-        """Read compact saved results and control version/actions. Only explicitly request include_history for bounded operator event history; checkpoints and raw source pages are never returned."""
-        task = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}", params={"view": "answer"})
-        answer = compact_research_answer(task)
+    async def get_task(goal_id: PositiveId, include_history: bool = False, historical_snapshot: bool = False) -> dict:
+        """Read the backend-recorded current answer by default, with its matching control version/actions. historical_snapshot=true reads the exact original goal. include_history also reads bounded saved outgoing sent-status history and separately labeled event metadata, never bodies or receipts; sent status is not inbox or attachment proof."""
+        resolved = await resolve_current_answer(api, goal_id, historical_snapshot=historical_snapshot)
+        task = resolved.current
+        answer = resolution_metadata(compact_research_answer(task), resolved)
         steps = task.get("tasks", [])
         answer["steps"] = [{key: step[key] for key in ("id", "capability", "state", "contract_revision") if key in step} for step in steps[:20]]
         answer["steps_total"] = task.get("progress", {}).get("total", len(steps))
@@ -342,12 +344,20 @@ def create_server(api: TaskApiClient) -> FastMCP:
         answer["step_preview_scope"] = "current research and preparation metadata" if not include_history else "bounded current task metadata"
         answer["step_preview_complete"] = len(answer["steps"]) == answer["steps_total"]
         if include_history:
-            history = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}")
-            events = history.get("events", [])
-            answer["operator_history"] = [{key: event[key] for key in ("id", "event_type", "created_at") if key in event} for event in events[-20:]]
-            answer["operator_history_total"] = len(events)
-            answer["operator_history_version"] = history.get("version")
-            answer["operator_history_scope"] = "Separate bounded event metadata; canonical answer state, requirements and scheduling come from the answer view."
+            history = await api.request("GET", f"/api/v1/agent-tasks/{task['id']}")
+            answer["recorded_delivery_history"] = recorded_delivery_history(history)
+            canonical_history = history_metadata(history, task["id"])
+            answer["operator_history_available"] = canonical_history is not None
+            answer["operator_history_goal_id"] = task["id"]
+            answer["operator_history"] = canonical_history["events"] if canonical_history else None
+            answer["operator_history_total"] = canonical_history["events_total"] if canonical_history else None
+            answer["operator_history_version"] = canonical_history["version"] if canonical_history else None
+            answer["operator_history_scope"] = canonical_history["scope"] if canonical_history else "Event metadata for the returned answer goal is not exposed by this grouped backend response. Use separately scoped recorded_delivery_history for saved outgoing delivery facts."
+            if task["id"] != goal_id:
+                original_history = history_metadata(history, goal_id)
+                if original_history is None:
+                    original_history = history_metadata(await api.request("GET", f"/api/v1/agent-tasks/{goal_id}"), goal_id)
+                answer["requested_goal_history"] = original_history
         return answer if include_history else brief_answer(answer)
 
     @server.tool(annotations=READ)
@@ -357,38 +367,41 @@ def create_server(api: TaskApiClient) -> FastMCP:
         contact_page: Annotated[int, Field(ge=1)] = 1,
         source_page: Annotated[int, Field(ge=1)] = 1,
         details: bool = False,
+        historical_snapshot: bool = False,
     ) -> dict:
-        """Read a brief saved result and actual coverage by default. Set details=true for requested sample contacts, source-backed drafts and verification dates. Copy saved drafts exactly. For a whole prospect list use get_prospect_list/read_task_spreadsheet. Never starts research or delivery."""
-        task = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}", params={"view": "answer"})
-        answer = compact_research_answer(task, agency_page, contact_page, source_page)
+        """Read the backend-recorded current saved result by default. historical_snapshot=true preserves the exact requested goal. Set details=true for samples, exact saved drafts and recorded dates. Never starts research or delivery."""
+        resolved = await resolve_current_answer(api, goal_id, historical_snapshot=historical_snapshot)
+        answer = resolution_metadata(compact_research_answer(resolved.current, agency_page, contact_page, source_page), resolved)
         return answer if details or max(agency_page, contact_page, source_page) > 1 else brief_answer(answer)
 
     @server.tool(annotations=READ)
     async def wait_for_task(
         goal_id: PositiveId,
         timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 45,
+        historical_snapshot: bool = False,
     ) -> dict:
-        """Wait for existing background research; returns brief saved status/coverage. On timeout call again with the same goal_id. Use explicit read tools for requested files or detail."""
+        """Wait on the backend-recorded current answer for the existing request. historical_snapshot=true watches the exact requested goal. On timeout reuse the same goal_id; never creates work."""
         deadline = time.monotonic() + timeout_seconds
         stop_states = {
             "completed", "satisfied", "cancelled", "superseded", "failed",
             "needs_attention", "blocked", "waiting_customer", "waiting_external", "paused",
         }
         task = None
+        resolved = None
         while True:
             if task is not None and deadline - time.monotonic() < 1:
-                return {"wait_status": "still_running", "task": brief_answer(compact_research_answer(task))}
-            task = await api.request(
-                "GET", f"/api/v1/agent-tasks/{goal_id}",
-                params={"view": "answer"},
+                return {"wait_status": "still_running", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
+            resolved = await resolve_current_answer(
+                api, goal_id, historical_snapshot=historical_snapshot,
                 timeout_seconds=min(10.0, max(0.1, deadline - time.monotonic())) if timeout_seconds else 10.0,
             )
+            task = resolved.current
             state = task.get("state")
             if state in stop_states:
-                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": brief_answer(compact_research_answer(task))}
+                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return {"wait_status": "still_running", "task": brief_answer(compact_research_answer(task))}
+                return {"wait_status": "still_running", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
             await asyncio.sleep(min(5, remaining))
 
     @server.tool(annotations=WRITE)
@@ -536,7 +549,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(annotations=READ)
     async def get_task_artifact(goal_id: PositiveId, artifact_id: PositiveId) -> dict:
-        """Download the original saved Excel workbook. Return its download_url as a clickable link, not a resource URI. No new research or customer delivery."""
+        """Retrieve the authorized saved Excel file for inspection here, including under a do-not-send request or held final gates. Requested review/download needs no additional read permission. Return download_url as a clickable link. Retrieval never starts research, authorizes email or clears delivery gates."""
         return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/download-link")
 
     @server.tool(annotations=READ)
