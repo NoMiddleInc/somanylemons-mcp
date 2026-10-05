@@ -88,6 +88,26 @@ def public_blocker(blocker):
     return {"party": blocker.get("party"), "reason": reason}
 
 
+def public_apollo_allowance(budget):
+    """Copy canonical current lookup authority without diagnostics or arithmetic."""
+    if not isinstance(budget, dict):
+        return None
+    result = {
+        key: budget[key]
+        for key in ("limit_credits", "reserved_credits", "remaining_credits", "checkpoint_size")
+        if type(budget.get(key)) is int and budget[key] >= 0
+    }
+    if not result:
+        return None
+    for key, canonical in (
+        ("scope", "shared Apollo account"),
+        ("accounting", "conservative attempted billable lookup units, not actual invoiced credits"),
+    ):
+        if type(budget.get(key)) is str and budget[key] == canonical:
+            result[key] = canonical
+    return result
+
+
 def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     """Project only saved, current-scope customer facts; never qualify rows locally."""
     from .provenance import bounded_email_provenance
@@ -95,6 +115,9 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
         "id", "title", "state", "fulfillment", "progress", "next_action",
         "next_run_at", "artifacts", "version", "allowed_actions", "manual_review_required", "action_is_scheduled",
     )}
+    allowance = public_apollo_allowance(task.get("apollo_credit_budget"))
+    if allowance is not None:
+        result["apollo_credit_budget"] = allowance
     conference = task.get("conference_answer")
     if isinstance(conference, dict):
         rows = conference.get("rows", [])
@@ -279,6 +302,9 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "A wait timeout means work continues in production; reuse the same goal_id, never recreate the request. "
             "Use get_research_answer for a compact customer answer from the task's research_answer field, including its quantitative and qualitative findings. "
             "Use get_task for compact current steps and control metadata. Request include_history only for operator event identifiers/dates. "
+            "apollo_credit_budget is current shared Apollo lookup authority; its numeric credit fields count conservative attempted billable lookup units, not provider balance or invoiced charges. "
+            "Keep current allowance separate from recorded blocker text: an earlier monthly quota blocker does not establish today's allowance. Missing allowance fields are unknown, never zero. "
+            "Available lookups do not clear review, model or source guards, authorize a retry, or prove completion. "
             "Include contact counts, actual email coverage, sources and limitations; never invent prospects or claim delivery before its recorded success."
             " When quoting a saved intro_email_draft, copy its exact characters and paragraph breaks, including Unicode curly apostrophes; do not normalize punctuation or rewrite the body. "
             "A false delivery_verified value means delivery has not been verified by that answer; it does not establish that no delivery occurred. Reconcile it with the saved task fulfillment and delivery records before making delivery claims."

@@ -241,6 +241,159 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn("private", json.dumps(answer))
 
 
+class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
+    def canonical_budget(self):
+        return {
+            "limit_credits": 2000,
+            "reserved_credits": 1098,
+            "remaining_credits": 902,
+            "checkpoint_size": 1000,
+            "scope": "shared Apollo account",
+            "accounting": "conservative attempted billable lookup units, not actual invoiced credits",
+        }
+
+    async def invoke_response(self, name, arguments, budget, state="needs_attention"):
+        calls = []
+        task = {
+            "id": 43, "state": state, "version": 2,
+            "progress": {"completed": 0, "total": 4},
+            "allowed_actions": ["pause", "cancel", "retry"],
+            "contract": {"count": 10},
+            "blocker": {
+                "party": "operator",
+                "reason": (
+                    "Prospect enrichment quota exceeded. 0 enrichment credits remain until "
+                    "2026-10-18T21:20:00.655157+00:00."
+                ),
+            },
+            "apollo_credit_budget": budget,
+        }
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": task})
+
+        result = await invoke_task(
+            name, arguments, api_url="https://producerspark.com", api_key="owner",
+            transport=httpx.MockTransport(handler),
+        )
+        content = result[0] if isinstance(result, tuple) else result
+        answer = json.loads(content[0].text)
+        if isinstance(result, tuple):
+            self.assertEqual(answer, result[1])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].headers["x-api-key"], "owner")
+        if name == "wait_for_task":
+            answer = answer["task"]
+        return answer, calls[0]
+
+    async def test_current_allowance_is_separate_from_historical_blocker_in_saved_reads(self):
+        budget = self.canonical_budget()
+        for name, arguments in (
+            ("get_task", {"goal_id": 43}),
+            ("get_task", {"goal_id": 43, "include_history": True}),
+            ("get_research_answer", {"goal_id": 43}),
+            ("wait_for_task", {"goal_id": 43, "timeout_seconds": 0}),
+        ):
+            with self.subTest(tool=name, arguments=arguments):
+                answer, request = await self.invoke_response(name, arguments, {
+                    **budget,
+                    "blocked_reason": "https://internal.example/debug?token=private",
+                    "provider_balance": "private account balance",
+                    "goal_reserved_credits": 1,
+                })
+                self.assertEqual(answer["apollo_credit_budget"], budget)
+                self.assertEqual(answer["state"], "needs_attention")
+                self.assertIn("0 credits remain", answer["blocker"]["reason"])
+                self.assertEqual(answer["progress"], {"completed": 0, "total": 4})
+                self.assertIn("retry", answer["allowed_actions"])
+                self.assertEqual(request.method, "GET")
+                self.assertEqual(request.url.path, "/api/v1/agent-tasks/43")
+                self.assertEqual(dict(request.url.params), {} if arguments.get("include_history") else {"view": "answer"})
+                self.assertNotIn("internal.example", json.dumps(answer))
+                self.assertNotIn("private", json.dumps(answer))
+                self.assertNotIn("provider_balance", json.dumps(answer))
+
+    async def test_create_and_control_project_authoritative_budget_without_extra_calls(self):
+        budget = self.canonical_budget()
+        uuid = "22222222-2222-4222-8222-222222222222"
+        for name, arguments, path in (
+            ("create_research_request", {
+                "agencies": ["Lockton"], "campaign_id": 51, "count": 10,
+                "idempotency_key": uuid,
+            }, "/api/v1/agent-tasks"),
+            ("retry_task", {
+                "goal_id": 43, "task_id": 491, "expected_version": 1,
+                "idempotency_key": uuid, "reason": "Continue the existing authorized request",
+            }, "/api/v1/agent-tasks/43/actions"),
+        ):
+            with self.subTest(tool=name):
+                answer, request = await self.invoke_response(name, arguments, {
+                    **budget, "operator_diagnostic": "https://internal.example/private",
+                }, state="queued")
+                self.assertEqual(answer["apollo_credit_budget"], budget)
+                self.assertEqual(answer["state"], "queued")
+                self.assertEqual(answer["version"], 2)
+                self.assertEqual(request.method, "POST")
+                self.assertEqual(request.url.path, path)
+                body = json.loads(request.content)
+                self.assertEqual(body["idempotency_key"], uuid)
+                self.assertNotIn("apollo_credit_budget", body)
+                if name == "retry_task":
+                    self.assertEqual(body["action"], "retry")
+                    self.assertEqual(body["expected_version"], 1)
+                    self.assertEqual(body["inputs"], {"task_id": 491})
+                else:
+                    self.assertEqual(body["campaign_id"], 51)
+                    self.assertEqual(body["count"], 10)
+                self.assertNotIn("internal.example", json.dumps(answer))
+
+    async def test_numeric_authority_rejects_bool_negative_and_noninteger_values(self):
+        from somanylemons_mcp.task_tools.server import public_apollo_allowance
+        budget = self.canonical_budget()
+        fields = ("limit_credits", "reserved_credits", "remaining_credits", "checkpoint_size")
+        for key in fields:
+            for invalid in (True, False, -1, 1.5, "1000", None, [1000], {"private": "value"}):
+                with self.subTest(field=key, value=invalid):
+                    projected = public_apollo_allowance({**budget, key: invalid})
+                    self.assertNotIn(key, projected)
+                    self.assertEqual({field: projected[field] for field in fields if field != key},
+                                     {field: budget[field] for field in fields if field != key})
+                    self.assertNotIn("private", json.dumps(projected))
+        zero = {**budget, **dict.fromkeys(fields, 0)}
+        self.assertEqual(public_apollo_allowance(zero), zero)
+
+    async def test_unknown_budget_text_and_urls_are_never_exposed(self):
+        from somanylemons_mcp.task_tools.server import public_apollo_allowance
+        budget = self.canonical_budget()
+        for key in ("scope", "accounting"):
+            for invalid in (None, False, 1000, {"private": "value"},
+                            budget[key] + " https://internal.example/private", budget[key] + "\n"):
+                with self.subTest(field=key, value=invalid):
+                    projected = public_apollo_allowance({**budget, key: invalid})
+                    self.assertNotIn(key, projected)
+                    self.assertEqual(projected["remaining_credits"], 902)
+                    self.assertNotIn("internal.example", json.dumps(projected))
+                    self.assertNotIn("private", json.dumps(projected))
+
+    async def test_missing_or_malformed_budget_does_not_invent_zero_allowance(self):
+        from somanylemons_mcp.task_tools.server import compact_research_answer
+        for budget in (None, "https://internal.example/private", [], True, 0, {},
+                       {"scope": "shared Apollo account", "remaining_credits": False}):
+            with self.subTest(value=budget):
+                answer = compact_research_answer({"id": 43, "apollo_credit_budget": budget})
+                self.assertNotIn("apollo_credit_budget", answer)
+                self.assertNotIn("internal.example", json.dumps(answer))
+
+    async def test_allowance_is_copied_without_computation_or_input_mutation(self):
+        from somanylemons_mcp.task_tools.server import public_apollo_allowance
+        budget = {**self.canonical_budget(), "remaining_credits": 7}
+        original = dict(budget)
+        self.assertEqual(public_apollo_allowance(budget), budget)
+        self.assertEqual(budget, original)
+        self.assertEqual(public_apollo_allowance(budget)["remaining_credits"], 7)
+
+
 class SessionBindingTests(unittest.TestCase):
  def test_foreign_key_and_unknown_session_rejected(self):
   b=SessionKeyBindings();self.assertTrue(b.check('', 'owner'))
@@ -309,6 +462,10 @@ class InitializeInstructionsTests(unittest.TestCase):
   self.assertIn('common task/provider lookup clock is not the date of every email',instructions)
   self.assertIn('must not replace those final status counts',instructions)
   self.assertIn('content tools according to their schemas',instructions)
+  self.assertIn('apollo_credit_budget is current shared Apollo lookup authority',instructions)
+  self.assertIn('an earlier monthly quota blocker does not establish today',instructions)
+  self.assertIn('Missing allowance fields are unknown, never zero',instructions)
+  self.assertIn('not provider balance or invoiced charges',instructions)
   self.assertNotIn('schema-only',instructions)
   self.assertNotIn('schema.invalid',instructions)
 
