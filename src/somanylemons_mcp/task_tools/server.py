@@ -61,6 +61,13 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
         result["conference_answer"] = {
             key: value for key, value in conference.items() if key not in {"rows", "sources"}
         }
+        event = result["conference_answer"].get("event")
+        if isinstance(event, dict):
+            # Declared fetch targets are not opened-source evidence. Preserve
+            # observed citations separately in the actual sources projection.
+            result["conference_answer"]["event"] = {
+                key: value for key, value in event.items() if key != "source_urls"
+            }
         result["contacts"] = []
         for row in rows[(contact_page - 1) * 5 : contact_page * 5]:
             projected = {

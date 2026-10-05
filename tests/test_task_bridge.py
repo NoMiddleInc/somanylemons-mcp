@@ -5,6 +5,14 @@ from somanylemons_mcp.task_tools.client import TaskApiError, TaskApiClient, Task
 from somanylemons_mcp.remote import SessionKeyBindings
 
 class BridgeTests(unittest.IsolatedAsyncioTestCase):
+ async def test_declared_targets_not_exposed_as_observed_citations(self):
+  from somanylemons_mcp.task_tools.server import compact_research_answer
+  task={'conference_answer':{'event':{'name':'Event','source_urls':['https://publisher.example/unopened.pdf']},'rows':[],'sources':[{'url':'https://publisher.example/observed','content_hash':'a'*64}],'citation_basis':'observed sources only'}}
+  answer=compact_research_answer(task)
+  self.assertNotIn('unopened.pdf',json.dumps(answer))
+  self.assertEqual(answer['sources'][0]['url'],'https://publisher.example/observed')
+  self.assertEqual(answer['conference_answer']['citation_basis'],'observed sources only')
+  self.assertIn('source_urls',task['conference_answer']['event'])
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
   self.assertEqual(len(tools),18)
