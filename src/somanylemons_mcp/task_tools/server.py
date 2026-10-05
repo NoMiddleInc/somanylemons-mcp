@@ -451,10 +451,16 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/download-link")
 
     @server.tool(annotations=READ)
-    async def read_task_spreadsheet(goal_id: PositiveId, artifact_id: PositiveId, sheet_name: str | None = None) -> dict:
-        """Read the complete saved prospect spreadsheet in one call for analysis, deduping or cleaning; no five-contact pagination. Includes all sheets by default and explicit truncation for oversized files. Do not print rows unless asked."""
-        return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/spreadsheet",
+    async def read_task_spreadsheet(goal_id: PositiveId, artifact_id: PositiveId, sheet_name: str | None = None, include_rows: bool = True) -> dict:
+        """Read the complete saved spreadsheet in one call; no five-contact pagination. Includes all sheets unless sheet_name is supplied. For sheet names, headers or counts only, set include_rows=false and quote sheets_summary exactly. Full analysis uses include_rows=true. Explicitly reports truncation; do not print rows unless asked."""
+        data = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/spreadsheet",
                                  params={"sheet_name": sheet_name} if sheet_name else None)
+        summary = [{key: sheet.get(key) for key in ("name", "row_count", "truncated")}
+                   for sheet in data.get("sheets", [])]
+        if not include_rows:
+            data = dict(data, sheets=[{key: value for key, value in sheet.items() if key != "rows"}
+                                     for sheet in data.get("sheets", [])])
+        return {"sheets_summary": summary, **data}
 
     @server.tool(annotations=READ)
     async def get_my_icp(config_id: PositiveId | None = None) -> dict:

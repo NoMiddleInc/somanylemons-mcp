@@ -45,6 +45,18 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertTrue(all(r.headers['x-api-key']=='owner' for r in calls))
   self.assertTrue(calls[0].url.path.endswith('/34/artifacts/7/download-link'))
 
+ async def test_sheet_summary_preserves_all_sheet_names_without_large_rows(self):
+  calls=[]
+  def handler(request):
+   calls.append(request)
+   return httpx.Response(200,json={"data":{"sheets":[
+    {"name":"Speakers and sessions","row_count":237,"headers":["Name"],"rows":[["person"]]*237,"truncated":False},
+    {"name":"Coverage and review","row_count":20,"headers":["Field","Value"],"rows":[["coverage","saved"]]*20,"truncated":False}]}})
+  result=await invoke_task("read_task_spreadsheet",{"goal_id":34,"artifact_id":7,"include_rows":False},api_url="https://example.com",api_key="owner",transport=httpx.MockTransport(handler))
+  rendered=str(result)
+  self.assertIn("sheets_summary",rendered);self.assertIn("Speakers and sessions",rendered);self.assertIn("Coverage and review",rendered)
+  self.assertNotIn("person",rendered);self.assertEqual(len(calls),1)
+
  async def test_saved_icp_tool_uses_scoped_facade_and_concise_guidance(self):
   from somanylemons_mcp.task_bridge import SCHEMA_SERVER
   calls=[]
