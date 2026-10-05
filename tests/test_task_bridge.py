@@ -112,6 +112,11 @@ class InitializeInstructionsTests(unittest.TestCase):
   instructions=server.create_initialization_options().instructions
   self.assertIn('status_counts_by_person',instructions)
   self.assertIn('Do not infer that government',instructions)
+  self.assertIn('must be resolved before the review hold can be cleared for delivery',instructions)
+  self.assertIn('never that no public email exists',instructions)
+  self.assertIn('recorded_email_provenance_groups',instructions)
+  self.assertIn('common task/provider lookup clock is not the date of every email',instructions)
+  self.assertIn('must not replace those final status counts',instructions)
   self.assertIn('content tools according to their schemas',instructions)
   self.assertNotIn('schema-only',instructions)
   self.assertNotIn('schema.invalid',instructions)
