@@ -221,7 +221,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         instructions=(
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link. "
             "Give the requested result first; omit sample contact tables, internal steps and repeated caveats unless asked. "
-            "For 'my ICP' use get_my_icp; for 'my prospect list' or 'download my list' use get_prospect_list. "
+            "For an ICP definition or targeting criteria use get_my_icp. For an ICP LIST, main list, golden list, prospect list or download my list use get_prospect_list. Discover all accessible lists with list_golden_lists and read every saved contact with read_golden_list. "
             "Return download_url as a clickable Markdown link with filename. Links expire after ten minutes; request a new link when expired. "
             "To analyze or clean a workbook use read_task_spreadsheet: it reads all normal-size saved rows in one call. "
             "Do not page contacts five at a time to retrieve a whole workbook. Never claim a workbook is inaccessible before trying these tools. "
@@ -471,7 +471,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(annotations=READ)
     async def get_my_icp(config_id: PositiveId | None = None, campaign_id: PositiveId | None = None) -> dict:
-        """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use whenever the user asks about their ICP. Never infer an ICP from attendees. When status is not_saved, state briefly that targeting criteria are unavailable and the download contains account metadata only."""
+        """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use for ICP targeting definitions. If the user means their ICP LIST or main contact/prospect list, use get_prospect_list/read_golden_list instead. Never infer an ICP from attendees. When status is not_saved, state briefly that targeting criteria are unavailable and the download contains account metadata only."""
         data = await api.request("GET", "/api/v1/agent-tasks/icp", params={k: v for k, v in {"config_id": config_id, "campaign_id": campaign_id}.items() if v is not None})
         if data.get("status") == "not_saved":
             return {"notice": "No saved ICP targeting criteria or profile are available for this account. The Excel download contains account metadata only.", **data}
