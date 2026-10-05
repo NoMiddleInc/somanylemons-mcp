@@ -464,8 +464,11 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(annotations=READ)
     async def get_my_icp(config_id: PositiveId | None = None) -> dict:
-        """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use whenever the user asks about their ICP. Never infer an ICP from conference attendees."""
-        return await api.request("GET", "/api/v1/agent-tasks/icp", params={"config_id": config_id} if config_id else None)
+        """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use whenever the user asks about their ICP. Never infer an ICP from attendees. When status is not_saved, state briefly that targeting criteria are unavailable and the download contains account metadata only."""
+        data = await api.request("GET", "/api/v1/agent-tasks/icp", params={"config_id": config_id} if config_id else None)
+        if data.get("status") == "not_saved":
+            return {"notice": "No saved ICP targeting criteria or profile are available for this account. The Excel download contains account metadata only.", **data}
+        return data
 
     @server.tool(annotations=READ)
     async def get_prospect_list(goal_id: PositiveId | None = None, config_id: PositiveId | None = None) -> dict:
