@@ -5,6 +5,7 @@ import re
 import sys
 import time
 from collections import Counter
+from copy import deepcopy
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -118,6 +119,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     from .provenance import bounded_email_provenance
     result = {key: task.get(key) for key in (
         "id", "title", "state", "fulfillment", "progress", "next_action", "current_answer_goal_id",
+        "current_step", "running", "updated_at",
         "next_run_at", "artifacts", "version", "allowed_actions", "manual_review_required", "action_is_scheduled",
     )}
     allowance = public_apollo_allowance(task.get("apollo_credit_budget"))
@@ -300,6 +302,22 @@ def brief_answer(answer):
     return result
 
 
+def research_progress_snapshot(answer):
+    """Compare recorded work and coverage, excluding timestamp/version churn."""
+    snapshot = {key: answer.get(key) for key in (
+        "id", "state", "fulfillment", "current_step", "running", "progress",
+        "next_action", "blocker", "artifacts", "manual_review_required",
+    )}
+    for key in ("research_answer", "business_answer", "conference_answer"):
+        saved = answer.get(key)
+        if isinstance(saved, dict):
+            snapshot[key] = {field: saved.get(field) for field in (
+                "counts", "coverage", "enrichment_summary", "full_request_fulfilled",
+                "workflow", "state", "next_action", "blockers",
+            )}
+    return deepcopy(snapshot)
+
+
 class TaskFastMCP(FastMCP):
     """Preserve each feedback attachment's recorded MIME in dynamic resources."""
 
@@ -341,6 +359,9 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "backend's existing authorized customer channel and budget/quality gates. These tools do not authorize prospect "
             "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. OAuth is limited to its owner's agents across active memberships; developer keys retain their organization boundary. A token never grants another customer's agent. An acknowledgment is not completion. "
             "For an immediate research answer, create the request once and use wait_for_task repeatedly until completed or a real blocker appears. "
+            "Before the first wait and between waits, give a brief user-facing update using the recorded current_step, state, actual contact/email counts and blockers. "
+            "Waits return within a short polling window or when saved progress changes. Never silently chain waits, invent a stage or ETA, or present worker steps as people. "
+            "If no new progress is recorded, say that plainly; do not describe queued or blocked work as active research. "
             "A wait timeout means work continues in production; reuse the same goal_id, never recreate the request. "
             "Use get_research_answer for a compact customer answer from the task's research_answer field, including its quantitative and qualitative findings. "
             "get_task, get_research_answer and wait_for_task follow the backend-recorded current answer by default. historical_snapshot=true reads the exact requested original goal. Returned id/version/allowed_actions belong together; requested_goal_controls and requested_goal_progress describe the original goal separately. Request include_history only for bounded operator event identifiers/dates; grouped history that does not identify the returned goal remains explicitly unavailable, not proof of no earlier email. "
@@ -410,34 +431,42 @@ def create_server(api: TaskApiClient) -> FastMCP:
         answer = resolution_metadata(compact_research_answer(resolved.current, agency_page, contact_page, source_page), resolved)
         return answer if details or max(agency_page, contact_page, source_page) > 1 else brief_answer(answer)
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Check research progress", annotations=READ)
     async def wait_for_task(
         goal_id: PositiveId,
-        timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 45,
+        timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 10,
         historical_snapshot: bool = False,
     ) -> dict:
-        """Wait on the backend-recorded current answer for the existing request. historical_snapshot=true watches the exact requested goal. On timeout reuse the same goal_id; never creates work."""
-        deadline = time.monotonic() + timeout_seconds
+        """Check existing background research, returning at a saved stage/count change or after at most a 10-second polling window (longer requested waits are capped). Give a brief user-facing update BEFORE the first call and AFTER each response, using task.current_step/state, actual saved contact/email counts and blockers; never silently chain waits. progress_changed_during_wait compares polls within this call only: compare the returned saved fields with your previous response before saying no new progress was recorded. Do not invent activity, counts or an ETA. Worker steps are not contacts. historical_snapshot=true watches the exact requested goal. Reuse the same goal_id until complete or a real blocker; never creates work."""
+        wait_seconds = min(timeout_seconds, 10)
+        deadline = time.monotonic() + wait_seconds
         stop_states = {
             "completed", "satisfied", "cancelled", "superseded", "failed",
             "needs_attention", "blocked", "waiting_customer", "waiting_external", "paused",
         }
         task = None
         resolved = None
+        initial_progress = None
+        answer = None
         while True:
             if task is not None and deadline - time.monotonic() < 1:
-                return {"wait_status": "still_running", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
+                return {"wait_status": "still_running", "progress_changed_during_wait": False, "task": answer}
             resolved = await resolve_current_answer(
                 api, goal_id, historical_snapshot=historical_snapshot,
-                timeout_seconds=min(10.0, max(0.1, deadline - time.monotonic())) if timeout_seconds else 10.0,
+                timeout_seconds=min(10.0, max(0.1, deadline - time.monotonic())) if wait_seconds else 10.0,
             )
             task = resolved.current
+            answer = brief_answer(resolution_metadata(compact_research_answer(task), resolved))
             state = task.get("state")
             if state in stop_states:
-                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
+                return {"wait_status": "finished" if state in {"completed", "satisfied"} else "needs_attention", "task": answer}
+            current_progress = research_progress_snapshot(answer)
+            if initial_progress is not None and current_progress != initial_progress:
+                return {"wait_status": "still_running", "progress_changed_during_wait": True, "task": answer}
+            initial_progress = current_progress
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return {"wait_status": "still_running", "task": brief_answer(resolution_metadata(compact_research_answer(task), resolved))}
+                return {"wait_status": "still_running", "progress_changed_during_wait": False, "task": answer}
             await asyncio.sleep(min(5, remaining))
 
     @server.tool(annotations=WRITE)
