@@ -1,9 +1,11 @@
 """Typed MCP tools; deliberately no Django models, workers or alternate task state."""
 
 import asyncio
+import re
 import sys
 import time
 from collections import Counter
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -47,6 +49,32 @@ def agency_payload(agencies):
         item.model_dump(exclude_none=True) if isinstance(item, AgencyIdentity) else item
         for item in agencies
     ]
+
+
+def public_blocker(blocker):
+    """Expose only the canonical customer quota cause from operator diagnostics."""
+    if not isinstance(blocker, dict):
+        return None
+    reason = blocker.get("reason")
+    if blocker.get("party") == "operator":
+        matched = re.fullmatch(
+            r"Prospect enrichment quota exceeded\. ([0-9]{1,10}) enrichment credits remain until "
+            r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))\.",
+            reason if isinstance(reason, str) else "",
+        )
+        reason = "Research needs an internal review before completion."
+        if matched:
+            try:
+                reset_at = datetime.fromisoformat(matched[2].replace("Z", "+00:00"))
+            except ValueError:
+                pass
+            else:
+                reason = (
+                    f"ProducerSpark enrichment quota exceeded: {int(matched[1])} credits "
+                    f"remain until {reset_at.isoformat()}."
+                )
+    return {"party": blocker.get("party"), "reason": reason}
 
 
 def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
@@ -196,8 +224,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     result["saved_email_status_counts"] = dict(Counter(str(row.get("email_status") or "not_recorded") for row in contacts.values()))
     result["saved_enrichment_status_counts"] = dict(Counter(str(row.get("enrichment_status") or "not_recorded") for row in contacts.values()))
     result["pagination"] = {"agency_page": agency_page, "agency_page_size": 5, "agencies_total": len(agencies), "contact_page": contact_page, "contact_page_size": 5, "contacts_total": len(contacts), "email_gap_preview_limit": 5, "source_page": source_page, "source_page_size": 3}
-    blocker = task.get("blocker")
-    result["blocker"] = ({"party": blocker.get("party"), "reason": "Research needs an internal review before completion." if blocker.get("party") == "operator" else blocker.get("reason")} if isinstance(blocker, dict) else None)
+    result["blocker"] = public_blocker(task.get("blocker"))
     if task.get("state") == "waiting_customer":
         result["customer_next_step"] = "Provide the agency names and their website domains when identity clarification is needed. The saved request will continue once the requested input is supplied."
     return result

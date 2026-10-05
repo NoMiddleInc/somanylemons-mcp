@@ -90,6 +90,99 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('Saved target',str(result));self.assertEqual(calls[0].url.path,'/api/v1/agent-tasks/icp')
   self.assertIn('75 words',SCHEMA_SERVER.instructions)
 
+class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
+    async def read_public_task(self, name, reason):
+        calls = []
+        # Same public goal/blocker shape as the backend's goal_detail facade.
+        task = {
+            "id": 43,
+            "title": "Research Lockton producers",
+            "state": "needs_attention",
+            "version": 1,
+            "allowed_actions": ["pause", "cancel", "retry"],
+            "progress": {"completed": 0, "total": 4},
+            "contract": {"count": 10, "agencies": [{"name": "Lockton"}]},
+            "blocker": {"party": "operator", "reason": reason},
+            "research_answer": {
+                "counts": {"qualified_contacts": 0, "pending_contacts": 51},
+                "agencies": [{"agency": "Lockton", "qualified_contacts": 0}],
+            },
+            "tasks": [{
+                "id": "491", "capability": "agency.research",
+                "state": "needs_attention", "result": {"blocker": reason},
+            }],
+        }
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": task})
+
+        arguments = {"goal_id": 43}
+        if name == "wait_for_task":
+            arguments["timeout_seconds"] = 0
+        result = await invoke_task(
+            name, arguments, api_url="https://producerspark.com", api_key="owner",
+            transport=httpx.MockTransport(handler),
+        )
+        content = result[0] if isinstance(result, tuple) else result
+        answer = json.loads(content[0].text)
+        if isinstance(result, tuple):
+            self.assertEqual(answer, result[1])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/43")
+        self.assertEqual(calls[0].url.params["view"], "answer")
+        self.assertEqual(calls[0].headers["x-api-key"], "owner")
+        if name == "wait_for_task":
+            self.assertEqual(answer["wait_status"], "needs_attention")
+            answer = answer["task"]
+        return answer
+
+    async def test_canonical_quota_reset_is_exposed_across_saved_task_reads(self):
+        reason = (
+            "Prospect enrichment quota exceeded. 0 enrichment credits remain until "
+            "2026-10-18T21:20:00.655157+00:00."
+        )
+        for name in ("get_task", "get_research_answer", "wait_for_task"):
+            with self.subTest(tool=name):
+                answer = await self.read_public_task(name, reason)
+                self.assertEqual(answer["blocker"], {
+                    "party": "operator",
+                    "reason": "ProducerSpark enrichment quota exceeded: 0 credits remain until 2026-10-18T21:20:00.655157+00:00.",
+                })
+                self.assertEqual(answer["state"], "needs_attention")
+                self.assertEqual(answer["research_answer"]["counts"]["qualified_contacts"], 0)
+                self.assertIn("retry", answer["allowed_actions"])
+                self.assertNotIn("http", answer["blocker"]["reason"])
+
+    async def test_unknown_or_extended_operator_diagnostics_stay_redacted(self):
+        canonical = (
+            "Prospect enrichment quota exceeded. 0 enrichment credits remain until "
+            "2026-10-18T21:20:00.655157+00:00."
+        )
+        reasons = [
+            "Internal provider failure: https://internal.example/debug?token=private",
+            canonical + " https://internal.example/debug?token=private",
+            "Internal details: " + canonical,
+            canonical + "\n",
+            canonical.replace("2026-10-18", "2026-99-18"),
+            canonical.replace("+00:00", "+24:00"),
+            canonical.replace("+00:00", "+00:60"),
+            canonical.replace("+00:00", ""),
+            canonical.replace("0 enrichment", "٠ enrichment"),
+            {"internal": "private"},
+        ]
+        for name in ("get_task", "get_research_answer", "wait_for_task"):
+            for reason in reasons:
+                with self.subTest(tool=name, reason=reason):
+                    answer = await self.read_public_task(name, reason)
+                    self.assertEqual(answer["blocker"], {
+                        "party": "operator",
+                        "reason": "Research needs an internal review before completion.",
+                    })
+                    self.assertNotIn("internal.example", json.dumps(answer))
+                    self.assertNotIn("private", json.dumps(answer))
+
+
 class SessionBindingTests(unittest.TestCase):
  def test_foreign_key_and_unknown_session_rejected(self):
   b=SessionKeyBindings();self.assertTrue(b.check('', 'owner'))
