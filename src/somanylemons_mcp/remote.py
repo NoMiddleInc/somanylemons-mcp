@@ -1,5 +1,5 @@
 """
-SoManyLemons Remote MCP Server (Streamable HTTP).
+ProducerSpark Remote MCP Server (Streamable HTTP).
 
 Serves MCP tools over HTTP so clients can connect without installing anything.
 
@@ -103,10 +103,10 @@ def _create_app() -> ASGIApp:
         stateless=False,
     )
 
-    resource = "https://mcp.somanylemons.com/mcp"
+    resource = "https://producerspark.com/mcp"
     issuer = "https://api.producerspark.com"
     challenge_headers = {
-        "WWW-Authenticate": f'Bearer resource_metadata="https://mcp.somanylemons.com/.well-known/oauth-protected-resource", scope="tasks:read tasks:write"'
+        "WWW-Authenticate": f'Bearer resource_metadata="https://producerspark.com/.well-known/oauth-protected-resource", scope="tasks:read tasks:write"'
     }
 
     async def protected_resource(request: Request):
@@ -136,7 +136,7 @@ def _create_app() -> ASGIApp:
         )
 
     async def health(request: Request):
-        return JSONResponse({"status": "ok", "server": "somanylemons-mcp"})
+        return JSONResponse({"status": "ok", "server": "producerspark-mcp"})
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
@@ -191,7 +191,7 @@ def _create_app() -> ASGIApp:
                     return
                 if (
                     not identity.get("active")
-                    or identity.get("resource") != resource
+                    or identity.get("resource") not in {resource, "https://mcp.somanylemons.com/mcp"}
                     or not set(identity.get("scope", "").split())
                     <= {"tasks:read", "tasks:write"}
                     or not identity.get("scope")
@@ -295,12 +295,12 @@ def _create_app() -> ASGIApp:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SoManyLemons Remote MCP Server")
+    parser = argparse.ArgumentParser(description="ProducerSpark Remote MCP Server")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument(
         "--api-url",
-        default=os.environ.get("SML_API_URL", "https://api.somanylemons.com"),
+        default=os.environ.get("SML_API_URL", "https://api.producerspark.com"),
         help="Backend API base URL",
     )
     args = parser.parse_args()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SoManyLemons MCP Server
+ProducerSpark MCP Server
 
 Model Context Protocol server that wraps the SML Public API.
 Provides tools for AI agents to create branded video reels, generate content,
@@ -8,7 +8,7 @@ extract quotes, and more.
 
 Usage:
     sml-mcp --api-key sml_xxxxx
-    sml-mcp --api-url https://api.somanylemons.com --api-key sml_xxxxx
+    sml-mcp --api-url https://api.producerspark.com --api-key sml_xxxxx
 
 Or via environment variables:
     SML_API_KEY=sml_xxxxx sml-mcp
@@ -35,7 +35,7 @@ import contextvars
 
 import httpx
 
-API_URL = os.environ.get("SML_API_URL", "https://api.somanylemons.com")
+API_URL = os.environ.get("SML_API_URL", "https://api.producerspark.com")
 API_KEY = os.environ.get("SML_API_KEY", "")
 
 # Per-session API key for the remote (multi-tenant) server.
@@ -149,7 +149,7 @@ RESEARCH_SKILL = files("somanylemons_mcp").joinpath("skills/producerspark/SKILL.
 RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 
 server = Server(
-    "somanylemons",
+    "producerspark",
     instructions=(
         RESEARCH_INSTRUCTIONS + "\n\n"
         "Use the content tools according to their schemas and descriptions. Hosted file uploads requiring local filesystem access remain unavailable; no research task authorizes content publishing or outreach. "
@@ -945,7 +945,7 @@ def _reject_local_fs_tool(tool_name: str) -> list:
         "detail": (
             f"The '{tool_name}' tool reads from your local filesystem and is "
             "only available when running the MCP server locally (stdio mode). "
-            "On the hosted server (mcp.somanylemons.com), pass a public URL "
+            "On the hosted ProducerSpark server, pass a public URL "
             "instead, or install the MCP server locally with "
             "'pip install somanylemons-mcp' and configure it as a stdio server."
         ),
@@ -1032,7 +1032,7 @@ async def _run():
 def main():
     global API_URL, API_KEY
 
-    parser = argparse.ArgumentParser(description="SoManyLemons MCP Server")
+    parser = argparse.ArgumentParser(description="ProducerSpark MCP Server")
     parser.add_argument("--api-url", default=API_URL, help="Base URL of the SML API")
     parser.add_argument("--api-key", default=API_KEY, help="API key (sml_xxxxx)")
     args = parser.parse_args()

@@ -7,7 +7,7 @@ Customers need a ProducerSpark account with an active organization and their sav
 ## Claude in your browser
 
 1. Open [Claude connectors](https://claude.ai/customize/connectors?modal=add-custom-connector). This opens **Add custom connector** directly.
-2. Name it **ProducerSpark**. Paste `https://mcp.somanylemons.com/mcp` as the server address. Choose sign-in; if asked about the OAuth client, choose **Register automatically**.
+2. Name it **ProducerSpark**. Paste `https://producerspark.com/mcp` as the server address. Choose sign-in; if asked about the OAuth client, choose **Register automatically**.
 3. Sign into ProducerSpark and click **Connect Claude**. Start a conversation and enable ProducerSpark from the chat's connectors menu.
 
 For Team or Enterprise, an owner may need to allow the connector first.
@@ -15,7 +15,7 @@ For Team or Enterprise, an owner may need to allow the connector first.
 ## ChatGPT in your browser
 
 1. Open **Settings → Security and login** and enable **Developer mode** for this first test.
-2. Open [ChatGPT Plugins](https://chatgpt.com/plugins), click **+**, and add a connection named **ProducerSpark** using `https://mcp.somanylemons.com/mcp`.
+2. Open [ChatGPT Plugins](https://chatgpt.com/plugins), click **+**, and add a connection named **ProducerSpark** using `https://producerspark.com/mcp`.
 3. Choose OAuth, sign into ProducerSpark and click **Connect ChatGPT**. Start a new chat with this connection enabled.
 
 Developer mode depends on the account and workspace policy. If it is unavailable, stop and record that account limitation; do not claim every ChatGPT plan can install this private connection. Normal directory installation for customers requires separate submission/publication after the browser pilot succeeds.

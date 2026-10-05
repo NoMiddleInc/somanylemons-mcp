@@ -15,7 +15,7 @@ class BrowserAuthTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             result = await client.get("/.well-known/oauth-protected-resource")
             self.assertEqual(
-                result.json()["resource"], "https://mcp.somanylemons.com/mcp"
+                result.json()["resource"], "https://producerspark.com/mcp"
             )
             denied = await client.post("/mcp")
             self.assertEqual(denied.status_code, 401)
