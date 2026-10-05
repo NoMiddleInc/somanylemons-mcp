@@ -102,7 +102,7 @@ def bounded_examples_and_artifacts(answer):
             if len(examples) > 2:
                 summary["candidate_examples_are_complete"] = False
             summary["candidate_examples_preview_scope"] = (
-                "At most two saved examples; candidate_people is the authoritative saved identity count, with identity_count_basis when recorded. Saved preview totals are not whole-cohort counts."
+                "At most two saved examples; candidate_people counts roster entries containing saved candidate evidence, including entries with a selected address. It is not the number of missing or held addresses. Use the recorded candidate selected/missing partitions when available. Saved preview totals are not whole-cohort counts; identity_count_basis still applies."
             )
         groups = summary.get("status_examples_by_person")
         if isinstance(groups, dict):
