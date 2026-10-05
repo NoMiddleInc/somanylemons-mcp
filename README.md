@@ -2,6 +2,10 @@
 
 AI-powered content marketing via [Model Context Protocol](https://modelcontextprotocol.io). Create branded video reels, LinkedIn posts, image quotes, and more — just type `/lemons`.
 
+## Browser research connection
+
+See [Claude and ChatGPT browser setup](docs/browser-setup.md) for the account sign-in flow and first read-only test. The initial pilot uses a custom connection; public directory installation is a separate publication step. No local package or copied API key is needed after the browser OAuth release.
+
 ## Install (one line)
 
 ```bash

@@ -22,7 +22,6 @@ import time
 from collections import defaultdict
 
 from starlette.applications import Starlette
-from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -65,11 +64,13 @@ def _is_rate_limited(api_key: str) -> bool:
     bucket.append(now)
     return False
 
+
 import somanylemons_mcp.server as _srv
 
 
 class SessionKeyBindings:
     """Bounded credential hashes; never retain a plaintext tenant key."""
+
     def __init__(self, limit=1024, ttl=1800):
         self.owners = {}
         self.limit, self.ttl = limit, ttl
@@ -86,7 +87,10 @@ class SessionKeyBindings:
         return bool(session_id) or len(self.owners) < self.limit
 
     def bind(self, session_id, key):
-        self.owners[session_id] = (hashlib.sha256(key.encode()).hexdigest(), time.monotonic() + self.ttl)
+        self.owners[session_id] = (
+            hashlib.sha256(key.encode()).hexdigest(),
+            time.monotonic() + self.ttl,
+        )
 
 
 def _create_app() -> ASGIApp:
@@ -101,18 +105,35 @@ def _create_app() -> ASGIApp:
 
     resource = "https://mcp.somanylemons.com/mcp"
     issuer = "https://api.producerspark.com"
-    challenge_headers = {"WWW-Authenticate": f'Bearer resource_metadata="https://mcp.somanylemons.com/.well-known/oauth-protected-resource", scope="tasks:read tasks:write"'}
+    challenge_headers = {
+        "WWW-Authenticate": f'Bearer resource_metadata="https://mcp.somanylemons.com/.well-known/oauth-protected-resource", scope="tasks:read tasks:write"'
+    }
 
     async def protected_resource(request: Request):
-        return JSONResponse({"resource": resource, "authorization_servers": [issuer], "scopes_supported": ["tasks:read", "tasks:write"], "resource_name": "ProducerSpark Research", "bearer_methods_supported": ["header"]})
+        return JSONResponse(
+            {
+                "resource": resource,
+                "authorization_servers": [issuer],
+                "scopes_supported": ["tasks:read", "tasks:write"],
+                "resource_name": "ProducerSpark Research",
+                "bearer_methods_supported": ["header"],
+            }
+        )
 
     async def skill_download(request: Request):
         import io
         import zipfile
+
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("producerspark/SKILL.md", _srv.RESEARCH_SKILL)
-        return Response(output.getvalue(), media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="producerspark-skill.zip"'})
+        return Response(
+            output.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": 'attachment; filename="producerspark-skill.zip"'
+            },
+        )
 
     async def health(request: Request):
         return JSONResponse({"status": "ok", "server": "somanylemons-mcp"})
@@ -127,27 +148,8 @@ def _create_app() -> ASGIApp:
             Route("/health", endpoint=health),
             Route("/skills/producerspark.zip", endpoint=skill_download),
             Route("/.well-known/oauth-protected-resource", endpoint=protected_resource),
-            Route("/.well-known/oauth-protected-resource/mcp", endpoint=protected_resource),
-        ],
-        middleware=[
-            Middleware(
-                CORSMiddleware,
-                allow_origins=[
-                    "https://claude.ai",
-                    "https://chatgpt.com",
-                    "https://producerspark.com",
-                    "https://www.claude.ai",
-                    "https://cursor.sh",
-                    "https://www.cursor.sh",
-                    "https://somanylemons.com",
-                    "https://qas.somanylemons.com",
-                    "http://localhost",
-                    "http://localhost:3000",
-                    "http://localhost:8000",
-                ],
-                allow_methods=["GET", "POST", "DELETE"],
-                allow_headers=["*"],
-                expose_headers=["mcp-session-id", "www-authenticate"],
+            Route(
+                "/.well-known/oauth-protected-resource/mcp", endpoint=protected_resource
             ),
         ],
         lifespan=lifespan,
@@ -157,7 +159,9 @@ def _create_app() -> ASGIApp:
         if scope["type"] == "http" and scope["path"] == "/mcp":
             # Inject Accept header if missing so older clients don't get 406
             headers = dict(scope.get("headers", []))
-            if b"accept" not in headers or b"text/event-stream" not in headers.get(b"accept", b""):
+            if b"accept" not in headers or b"text/event-stream" not in headers.get(
+                b"accept", b""
+            ):
                 scope["headers"] = [
                     (k, v) for k, v in scope["headers"] if k != b"accept"
                 ] + [(b"accept", b"application/json, text/event-stream")]
@@ -170,15 +174,34 @@ def _create_app() -> ASGIApp:
             if authorization.lower().startswith("bearer "):
                 client_key = authorization[7:].strip()
                 try:
-                    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-                        result = await client.post(issuer+"/oauth/mcp/introspect", headers={"Authorization": "Bearer "+client_key})
+                    async with httpx.AsyncClient(
+                        timeout=10, follow_redirects=False
+                    ) as client:
+                        result = await client.post(
+                            issuer + "/oauth/mcp/introspect",
+                            headers={"Authorization": "Bearer " + client_key},
+                        )
                     identity = result.json() if result.status_code == 200 else {}
                 except (httpx.HTTPError, ValueError):
-                    response = JSONResponse({"error": "Account connection temporarily unavailable."}, status_code=503)
+                    response = JSONResponse(
+                        {"error": "Account connection temporarily unavailable."},
+                        status_code=503,
+                    )
                     await response(scope, receive, send)
                     return
-                if not identity.get("active") or identity.get("resource") != resource or not set(identity.get("scope", "").split()) <= {"tasks:read", "tasks:write"} or not identity.get("scope") or not identity.get("session_binding"):
-                    response = JSONResponse({"error": "Sign in to ProducerSpark to connect this account."}, status_code=401, headers=challenge_headers)
+                if (
+                    not identity.get("active")
+                    or identity.get("resource") != resource
+                    or not set(identity.get("scope", "").split())
+                    <= {"tasks:read", "tasks:write"}
+                    or not identity.get("scope")
+                    or not identity.get("session_binding")
+                ):
+                    response = JSONResponse(
+                        {"error": "Sign in to ProducerSpark to connect this account."},
+                        status_code=401,
+                        headers=challenge_headers,
+                    )
                     await response(scope, receive, send)
                     return
                 binding_key = identity["session_binding"]
@@ -186,23 +209,39 @@ def _create_app() -> ASGIApp:
             if not client_key:
                 response = JSONResponse(
                     {"error": "Connect your ProducerSpark account."},
-                    status_code=401, headers=challenge_headers,
+                    status_code=401,
+                    headers=challenge_headers,
                 )
                 await response(scope, receive, send)
                 return
 
-            if not research_only and (not client_key.startswith("sml_") or len(client_key) < 20):
-                response = JSONResponse({"error": "Invalid API key format"}, status_code=401, headers=challenge_headers)
+            if not research_only and (
+                not client_key.startswith("sml_") or len(client_key) < 20
+            ):
+                response = JSONResponse(
+                    {"error": "Invalid API key format"},
+                    status_code=401,
+                    headers=challenge_headers,
+                )
                 await response(scope, receive, send)
                 return
             if _is_rate_limited(binding_key):
-                response = JSONResponse({"error": "Rate limit exceeded. Max 60 requests per minute."}, status_code=429, headers={"Retry-After": "60"})
+                response = JSONResponse(
+                    {"error": "Rate limit exceeded. Max 60 requests per minute."},
+                    status_code=429,
+                    headers={"Retry-After": "60"},
+                )
                 await response(scope, receive, send)
                 return
 
             session_id = request.headers.get("mcp-session-id", "")
             if not bindings.check(session_id, binding_key):
-                response = JSONResponse({"error": "MCP session is unavailable for this API key; initialize a new session."}, status_code=403)
+                response = JSONResponse(
+                    {
+                        "error": "MCP session is unavailable for this API key; initialize a new session."
+                    },
+                    status_code=403,
+                )
                 await response(scope, receive, send)
                 return
 
@@ -213,6 +252,16 @@ def _create_app() -> ASGIApp:
                             bindings.bind(value.decode(), binding_key)
                 await send(message)
 
+            # The SDK runs a session in a background task. Attach credentials to
+            # each request's metadata so tools never retain an expired first key.
+            scope = dict(scope)
+            scope["state"] = dict(
+                scope.get("state", {}),
+                producerspark_mcp_identity={
+                    "api_key": client_key,
+                    "research_only": research_only,
+                },
+            )
             token = _srv._session_api_key.set(client_key)
             research_token = _srv._research_only.set(research_only)
             try:
@@ -223,7 +272,23 @@ def _create_app() -> ASGIApp:
         else:
             await starlette_app(scope, receive, send)
 
-    return app
+    return CORSMiddleware(
+        app,
+        allow_origins=[
+            "https://claude.ai",
+            "https://www.claude.ai",
+            "https://chatgpt.com",
+            "https://producerspark.com",
+            "https://somanylemons.com",
+            "https://cursor.sh",
+            "https://www.cursor.sh",
+            "http://localhost:3000",
+            "http://localhost:8000",
+        ],
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["*"],
+        expose_headers=["mcp-session-id", "www-authenticate"],
+    )
 
 
 def main():
@@ -248,6 +313,7 @@ def main():
     log_level = os.environ.get("LOG_LEVEL", "warning").lower()
 
     import uvicorn
+
     uvicorn.run(_create_app(), host=args.host, port=args.port, log_level=log_level)
 
 

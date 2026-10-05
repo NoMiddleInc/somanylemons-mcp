@@ -61,12 +61,21 @@ CAPTION_STYLES = [
 ASSET_TYPES = ["videogram", "audiogram", "image_quote"]
 
 
+def _request_identity():
+    if not REMOTE_MODE:
+        return {"api_key": _session_api_key.get() or API_KEY, "research_only": _research_only.get()}
+    try:
+        request = server.request_context.request
+        identity = request.scope.get("state", {}).get("producerspark_mcp_identity") if request else None
+    except LookupError:
+        identity = None
+    if not identity:
+        raise ValueError("Authenticated HTTP request context is required.")
+    return identity
+
+
 def get_headers():
-    key = _session_api_key.get() or API_KEY
-    return {
-        "X-API-Key": key,
-        "Content-Type": "application/json",
-    }
+    return {"X-API-Key": _request_identity()["api_key"], "Content-Type": "application/json"}
 
 
 # ---------------------------------------------------------------------------
@@ -819,7 +828,7 @@ async def list_tools():
     ]
 
     from .task_bridge import task_schemas
-    return await task_schemas() if _research_only.get() else tools + await task_schemas()
+    return await task_schemas() if _request_identity()["research_only"] else tools + await task_schemas()
 
 
 # ---------------------------------------------------------------------------
@@ -939,7 +948,7 @@ def _reject_local_fs_tool(tool_name: str) -> list:
 async def read_resource(uri):
     from mcp.server.lowlevel.helper_types import ReadResourceContents
     from .task_bridge import read_task_artifact
-    key = _session_api_key.get() if REMOTE_MODE else (_session_api_key.get() or API_KEY)
+    key = _request_identity()["api_key"]
     content = await read_task_artifact(uri, api_url=API_URL, api_key=key)
     return [ReadResourceContents(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
 
@@ -951,10 +960,10 @@ TOOL_ROUTES.update({name: ("TASK", "") for name in TASK_TOOL_NAMES})
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
     from .task_bridge import invoke_task
-    if _research_only.get() and name not in TASK_TOOL_NAMES:
+    if _request_identity()["research_only"] and name not in TASK_TOOL_NAMES:
         return [TextContent(type="text", text="This account connection permits research tools only.")]
     if TOOL_ROUTES.get(name, (None,))[0] == "TASK":
-        key = _session_api_key.get() if REMOTE_MODE else (_session_api_key.get() or API_KEY)
+        key = _request_identity()["api_key"]
         return await invoke_task(name, arguments, api_url=API_URL, api_key=key)
     # In remote (hosted) mode, reject tools that require local filesystem access.
     if REMOTE_MODE and name in _LOCAL_FS_TOOLS:
