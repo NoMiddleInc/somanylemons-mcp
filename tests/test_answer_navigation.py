@@ -210,6 +210,81 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(out["conference_answer"]["enrichment_summary"], summary)
         self.assertFalse(out["conference_answer"]["client_session_end_time_recorded"])
 
+    def test_roster_aliases_addresses_and_completed_keys_keep_distinct_units(self):
+        people = [
+            {
+                "name": f"Roster entry {i}",
+                "company": "Saved company",
+                "email": f"address{i if i < 164 else i - 164}@example.com"
+                if i < 166
+                else "",
+                "session_title": f"Session {i}",
+            }
+            for i in range(191)
+        ]
+        people[0]["name"], people[164]["name"] = "Pat Example", "Patricia Example"
+        people[1]["name"], people[165]["name"] = (
+            "Chris Example",
+            "Christopher Example",
+        )
+        order = [0, 164, 1, 165, *range(2, 164), *range(166, 191)]
+        rows = [people[index] for index in order] + people[:46]
+        summary = {
+            "unique_people": 191,
+            "identity_count_basis": "Saved name/company roster keys may contain aliases; not distinct individuals.",
+            "recorded_email_address_count_basis": "Trimmed, casefolded recorded addresses; shared addresses do not prove identity or deliverability.",
+            "distinct_recorded_email_addresses": 164,
+            "shared_recorded_email_address_groups": 2,
+            "roster_keys_in_shared_recorded_email_address_groups": 4,
+            "missing_email_people": 25,
+            "recorded_email_enrichment_status_counts_by_person": {
+                "completed": 13,
+                "saved_result_reused": 153,
+            },
+            "recorded_email_provenance_groups": [
+                {
+                    "email_source": "saved_public_source",
+                    "enrichment_status": "completed",
+                    "people": 13,
+                },
+                {
+                    "email_source": "saved_provider",
+                    "enrichment_status": "saved_result_reused",
+                    "people": 153,
+                },
+            ],
+        }
+        task = {
+            "conference_answer": {
+                "rows": rows,
+                "sources": [],
+                "email_coverage": {"unique_speakers": 191, "recorded_emails": 166},
+                "enrichment_summary": summary,
+                "final_delivery_requirements": {"all_required_met": False},
+            }
+        }
+        original = copy.deepcopy(task)
+        out = compact_research_answer(task)
+        projected = out["conference_answer"]
+        for key, value in summary.items():
+            self.assertEqual(projected["enrichment_summary"][key], value)
+        self.assertEqual(
+            projected["email_coverage"], task["conference_answer"]["email_coverage"]
+        )
+        self.assertEqual(out["pagination"]["rows_total"], 237)
+        self.assertEqual(
+            [row["name"] for row in out["contacts"]],
+            [row["name"] for row in rows[:5]],
+        )
+        self.assertEqual(out["contacts"][0]["email"], out["contacts"][1]["email"])
+        self.assertEqual(out["contacts"][2]["email"], out["contacts"][3]["email"])
+        self.assertEqual(
+            projected["enrichment_summary"]["recorded_email_provenance_people_total"],
+            166,
+        )
+        self.assertFalse(projected["final_delivery_requirements"]["all_required_met"])
+        self.assertEqual(task, original)
+
 
 class NavigationToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_list_tool_preserves_params_and_one_scoped_request(self):
@@ -256,6 +331,13 @@ class NavigationToolTests(unittest.IsolatedAsyncioTestCase):
             "missing_email_enrichment_status_counts_by_person",
             hosted.server.instructions,
         )
+        for field in (
+            "identity_count_basis",
+            "distinct_recorded_email_addresses",
+            "recorded_email_address_count_basis",
+        ):
+            self.assertIn(field, hosted.server.instructions)
+        self.assertIn("delete or merge alias rows", hosted.server.instructions)
 
 
 if __name__ == "__main__":

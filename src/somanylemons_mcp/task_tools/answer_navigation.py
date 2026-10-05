@@ -51,10 +51,10 @@ def list_task_navigation(response):
                 "goal_id": current,
             }
             row["outcome_summary"] = (
-                f"Read get_research_answer(goal_id={current}) for current unique-person counts, recorded email clocks, "
+                f"Read get_research_answer(goal_id={current}) for current roster identity counts and their counting basis, recorded email clocks, "
                 "research gaps and all final-delivery requirements. This row is navigation metadata; listed progress "
                 "counts worker steps for the original goal. Artifact row_count counts speaker/session appearances, "
-                "not unique people. A review blocker or worker-stage completion alone never establishes final readiness."
+                "not roster identity keys or independently resolved individuals. A review blocker or worker-stage completion alone never establishes final readiness."
             )
         else:
             row["current_answer_goal_id"] = None
@@ -75,7 +75,7 @@ def list_task_navigation(response):
             row["outcome_summary"] = (
                 "Current answer lineage is not recorded by this response. Saved artifact metadata may identify a historical "
                 "snapshot; it never proves current research state or readiness. Read the requested task before drawing conclusions. "
-                "Listed progress counts original-goal worker steps; artifact row_count counts appearances, not unique people."
+                "Listed progress counts original-goal worker steps; artifact row_count counts appearances, not roster identity keys or independently resolved individuals."
             )
     return result
 
@@ -102,7 +102,7 @@ def bounded_examples_and_artifacts(answer):
             if len(examples) > 2:
                 summary["candidate_examples_are_complete"] = False
             summary["candidate_examples_preview_scope"] = (
-                "At most two saved examples; candidate_people is the authoritative person count. Saved preview totals are not whole-cohort counts."
+                "At most two saved examples; candidate_people is the authoritative saved identity count, with identity_count_basis when recorded. Saved preview totals are not whole-cohort counts."
             )
         groups = summary.get("status_examples_by_person")
         if isinstance(groups, dict):
