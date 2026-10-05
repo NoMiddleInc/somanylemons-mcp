@@ -57,6 +57,7 @@ def saved_business_answer(task, result, *, contact_page, source_page):
         total = len(rows)
     result["business_answer"] = {key: value for key, value in saved.items() if key in {
         "counts", "coverage", "spec", "requested", "delivery", "citation_basis", "limitations", "full_request_fulfilled",
+        "original_goal_id", "interim_results", "closure", "workflow", "state", "fulfillment", "next_action", "blockers",
     }}
     result["request"] = {"request": contract.get("request"), "spec": contract.get("spec")}
     fields = {

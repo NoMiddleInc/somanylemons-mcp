@@ -131,6 +131,20 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["pagination"]["contacts_truncated"])
         self.assertEqual(result["saved_status_count_scope"], {"contacts_counted": 1, "contacts_total": 150, "complete": False})
 
+    def test_delivered_interim_never_closes_original_all_obligation(self):
+        task = {"id": 76, "state": "completed", "fulfillment": "fulfilled",
+            "contract": {"workflow": "business_research"}, "business_answer": {
+                "contacts": [], "contacts_total": 0, "original_goal_id": 24,
+                "closure": "interim_delivered_original_open", "delivery": {"status": "provider_accepted"},
+                "coverage": {"interim": True, "original_goal_id": 24, "original_all_obligation": "open_coverage_unproven"},
+                "interim_results": [{"goal_id": 76, "state": "completed", "fulfillment": "fulfilled", "original_all_obligation": "open"}]}}
+        result = compact_research_answer(task)
+        self.assertEqual(result["business_answer"]["original_goal_id"], 24)
+        self.assertEqual(result["business_answer"]["closure"], "interim_delivered_original_open")
+        self.assertEqual(result["business_answer"]["coverage"]["original_all_obligation"], "open_coverage_unproven")
+        self.assertEqual(result["business_answer"]["interim_results"][0]["original_all_obligation"], "open")
+        self.assertNotIn("full_request_fulfilled", result["business_answer"])
+
 
 if __name__ == "__main__":
     unittest.main()
