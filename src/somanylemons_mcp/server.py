@@ -58,6 +58,8 @@ CAPTION_STYLES = [
     "GLITCH", "RANSOM", "WAVE", "BOUNCE",
 ]
 
+ASSET_TYPES = ["videogram", "audiogram", "image_quote"]
+
 
 def get_headers():
     key = _session_api_key.get() or API_KEY
@@ -65,6 +67,32 @@ def get_headers():
         "X-API-Key": key,
         "Content-Type": "application/json",
     }
+
+
+# ---------------------------------------------------------------------------
+# Security: sanitize error responses before returning to MCP consumer
+# ---------------------------------------------------------------------------
+
+# Keys whose values could contain secrets if the backend leaks them in errors.
+_SENSITIVE_KEYS = frozenset({
+    "authorization", "x-api-key", "api_key", "apikey", "token",
+    "secret", "password", "cookie", "set-cookie",
+})
+
+
+def _sanitize_response(data):
+    """Remove fields that could contain API keys or auth headers from error
+    responses. Operates recursively on dicts and lists."""
+    if isinstance(data, dict):
+        return {
+            k: "(redacted)" if k.lower() in _SENSITIVE_KEYS else _sanitize_response(v)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_sanitize_response(item) for item in data]
+    if isinstance(data, str) and data.startswith("sml_") and len(data) > 20:
+        return data[:8] + "…(redacted)"
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +122,7 @@ async def _api_call(method, path, payload=None, params=None, timeout=30):
         return [TextContent(type="text", text=json.dumps({
             "error": True,
             "status_code": resp.status_code,
-            "detail": data,
+            "detail": _sanitize_response(data),
         }, indent=2))]
 
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
@@ -123,7 +151,8 @@ async def list_tools():
                 "Turn a recording into branded, captioned short-form video reels. "
                 "Submit a URL to a video or audio file. Returns a job ID to poll. "
                 "The pipeline transcribes, extracts the best moments, and renders "
-                "captioned clips with your brand styling. Typical time: 2-5 minutes."
+                "captioned clips with your brand styling. Defaults to videograms; "
+                "set asset_types to request audiograms or image quotes. Typical time: 2-5 minutes."
             ),
             inputSchema={
                 "type": "object",
@@ -139,6 +168,11 @@ async def list_tools():
                     "brand_profile_id": {
                         "type": "integer",
                         "description": "Brand profile ID for styling. Use list_brands to see options.",
+                    },
+                    "asset_types": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ASSET_TYPES},
+                        "description": "Rendered asset types to create. Defaults to ['videogram'].",
                     },
                     "caption_style": {
                         "type": "string",

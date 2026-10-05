@@ -18,6 +18,8 @@ import logging
 import hashlib
 import time
 import os
+import time
+from collections import defaultdict
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -31,6 +33,37 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory rate limiter (per-instance, no Redis needed for Cloud Run).
+# Limits connections per API key to prevent brute-force and abuse.
+# ---------------------------------------------------------------------------
+
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX_REQUESTS = 60  # per key per window
+
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_rate_limited(api_key: str) -> bool:
+    """Return True if this API key has exceeded the per-minute request limit."""
+    now = time.monotonic()
+    api_key = hashlib.sha256(api_key.encode()).hexdigest()
+    cutoff = now - _RATE_LIMIT_WINDOW
+    for key in list(_rate_buckets):
+        if not _rate_buckets[key] or _rate_buckets[key][-1] <= cutoff:
+            del _rate_buckets[key]
+    if api_key not in _rate_buckets and len(_rate_buckets) >= 4096:
+        return True
+    bucket = _rate_buckets[api_key]
+    # Prune old entries
+    cutoff = now - _RATE_LIMIT_WINDOW
+    _rate_buckets[api_key] = [t for t in bucket if t > cutoff]
+    bucket = _rate_buckets[api_key]
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        return True
+    bucket.append(now)
+    return False
 
 import somanylemons_mcp.server as _srv
 
@@ -99,7 +132,19 @@ def _create_app() -> ASGIApp:
         middleware=[
             Middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
+                allow_origins=[
+                    "https://claude.ai",
+                    "https://chatgpt.com",
+                    "https://producerspark.com",
+                    "https://www.claude.ai",
+                    "https://cursor.sh",
+                    "https://www.cursor.sh",
+                    "https://somanylemons.com",
+                    "https://qas.somanylemons.com",
+                    "http://localhost",
+                    "http://localhost:3000",
+                    "http://localhost:8000",
+                ],
                 allow_methods=["GET", "POST", "DELETE"],
                 allow_headers=["*"],
                 expose_headers=["mcp-session-id", "www-authenticate"],
@@ -146,6 +191,15 @@ def _create_app() -> ASGIApp:
                 await response(scope, receive, send)
                 return
 
+            if not research_only and (not client_key.startswith("sml_") or len(client_key) < 20):
+                response = JSONResponse({"error": "Invalid API key format"}, status_code=401, headers=challenge_headers)
+                await response(scope, receive, send)
+                return
+            if _is_rate_limited(binding_key):
+                response = JSONResponse({"error": "Rate limit exceeded. Max 60 requests per minute."}, status_code=429, headers={"Retry-After": "60"})
+                await response(scope, receive, send)
+                return
+
             session_id = request.headers.get("mcp-session-id", "")
             if not bindings.check(session_id, binding_key):
                 response = JSONResponse({"error": "MCP session is unavailable for this API key; initialize a new session."}, status_code=403)
@@ -188,8 +242,13 @@ def main():
     # the local filesystem will be rejected explicitly (see server.call_tool).
     _srv.REMOTE_MODE = True
 
+    # Use "warning" in production to avoid logging request headers (which
+    # could contain API keys on malformed requests). "info" is safe for local
+    # dev but noisy and risky in hosted mode.
+    log_level = os.environ.get("LOG_LEVEL", "warning").lower()
+
     import uvicorn
-    uvicorn.run(_create_app(), host=args.host, port=args.port, log_level="info")
+    uvicorn.run(_create_app(), host=args.host, port=args.port, log_level=log_level)
 
 
 if __name__ == "__main__":

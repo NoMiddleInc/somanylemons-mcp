@@ -71,11 +71,11 @@ class RemoteIsolationTests(unittest.IsolatedAsyncioTestCase):
   with patch.object(remote,'StreamableHTTPSessionManager',Manager):
    app=remote._create_app()
    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='https://mcp.example') as client:
-    first=await client.post('/mcp',headers={'x-api-key':'owner'})
+    first=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz'})
     self.assertEqual(first.status_code,200)
-    attack=await client.post('/mcp',headers={'x-api-key':'other','mcp-session-id':'session-one'})
+    attack=await client.post('/mcp',headers={'x-api-key':'sml_other_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
     self.assertEqual(attack.status_code,403)
-    accepted=await client.post('/mcp',headers={'x-api-key':'owner','mcp-session-id':'session-one'})
+    accepted=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
     self.assertEqual(accepted.status_code,200)
-  self.assertEqual(calls,['owner','owner'])
+  self.assertEqual(calls,['sml_owner_abcdefghijklmnopqrstuvwxyz','sml_owner_abcdefghijklmnopqrstuvwxyz'])
   self.assertEqual(server._session_api_key.get(),'')
