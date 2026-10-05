@@ -294,7 +294,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
     @server.tool(annotations=READ)
     async def get_task(goal_id: PositiveId, include_history: bool = False) -> dict:
         """Read compact saved results and control version/actions. Only explicitly request include_history for bounded operator event history; checkpoints and raw source pages are never returned."""
-        task = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}", params={} if include_history else {"view": "answer"})
+        task = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}", params={"view": "answer"})
         answer = compact_research_answer(task)
         steps = task.get("tasks", [])
         answer["steps"] = [{key: step[key] for key in ("id", "capability", "state", "contract_revision") if key in step} for step in steps[:20]]
@@ -303,9 +303,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
         answer["step_preview_scope"] = "current research and preparation metadata" if not include_history else "bounded current task metadata"
         answer["step_preview_complete"] = len(answer["steps"]) == answer["steps_total"]
         if include_history:
-            events = task.get("events", [])
+            history = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}")
+            events = history.get("events", [])
             answer["operator_history"] = [{key: event[key] for key in ("id", "event_type", "created_at") if key in event} for event in events[-20:]]
             answer["operator_history_total"] = len(events)
+            answer["operator_history_version"] = history.get("version")
+            answer["operator_history_scope"] = "Separate bounded event metadata; canonical answer state, requirements and scheduling come from the answer view."
         return answer if include_history else brief_answer(answer)
 
     @server.tool(annotations=READ)
