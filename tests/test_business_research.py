@@ -37,7 +37,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         fields = next(value for value in spec["properties"]["fields"]["anyOf"] if value.get("type") == "array")
         self.assertEqual(fields["maxItems"], 40)
         self.assertTrue({"session_date", "session_time", "room", "email_status", "field_provenance",
-                         "organizer_company", "requested_company_identity_hints"}.issubset(fields["items"]["enum"]))
+                         "organizer_company", "requested_company_identity_hints", "city", "state"}.issubset(fields["items"]["enum"]))
         self.assertIn("identity_hints", schema["$defs"]["BusinessCompany"]["properties"])
 
     async def test_dell_cio_and_first15_conference_payloads_use_generic_scoped_endpoint(self):
@@ -51,7 +51,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         for spec in (
             {"kind": "company_contacts", "companies": [{"name": "Dell", "domain": "dell.com",
                 "identity_hints": {"hq_city": "Round Rock", "supplied_literal": {"source_row": 7, "confirmed": False}}}],
-                "roles": ["CIO"], "count": 1, "fields": ["email", "name", "website_url", "email_status", "field_provenance"]},
+                "roles": ["CIO"], "count": 1, "fields": ["email", "name", "website_url", "email_status", "field_provenance", "city", "state"]},
             {"kind": "conference_speakers", "event": {"name": "Technology Congress", "year": 2026, "source_urls": ["https://publisher.example.com/speakers"]}, "count": 15, "all": False},
         ):
             result = await invoke_task("create_business_research_request", {
@@ -172,7 +172,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(current["coverage"]["original_all_obligation"], "open_coverage_unproven")
 
     def test_publisher_and_saved_metadata_preserved_with_explicit_provenance_preview_limits(self):
-        row = {"id": "one", "name": "Person", "email": "person@example.com", "session_date": "2026-10-05",
+        row = {"id": "one", "name": "Person", "email": "person@example.com", "city": "Chicago", "state": "Illinois", "session_date": "2026-10-05",
             "session_time": "09:00", "room": "Main Hall", "organizer_company": "Published Company",
             "organizer_title": "Published Title", "recorded_organizer_email": "published@example.com",
             "provider_email_status": "verified", "email_content_hash": "saved-hash",
@@ -183,7 +183,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             "field_provenance": {f"field{i}": {"source": "Apollo", "source_operation_id": 7, "uncertainty": "x" * 400} for i in range(42)}}
         answer = compact_research_answer({"id": 79, "business_answer": {"contacts": [row]}})
         projected = answer["contacts"][0]
-        for field in ("session_date", "session_time", "room", "organizer_company", "organizer_title",
+        for field in ("city", "state", "session_date", "session_time", "room", "organizer_company", "organizer_title",
                       "recorded_organizer_email", "email_content_hash", "provider_email_status", "email_candidates", "requested_company_identity_hints", "requested_company_name"):
             self.assertEqual(projected[field], row[field])
         self.assertFalse(projected["email_candidates_truncated"])

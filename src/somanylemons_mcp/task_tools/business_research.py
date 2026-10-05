@@ -10,7 +10,7 @@ BusinessField = Literal[
     "name", "company", "title", "role", "email", "linkedin", "reason", "email_status",
     "email_verified_at", "email_source", "email_source_url", "email_observed_at", "email_content_hash",
     "provider_email_status", "enrichment_status", "enrichment_source", "enriched_on", "sources", "researchedOn",
-    "session_title", "session_date", "session_time", "room", "location", "industry", "employees", "website_url",
+    "session_title", "session_date", "session_time", "room", "location", "city", "state", "industry", "employees", "website_url",
     "action", "fit", "id", "notes", "linkedin_status", "field_provenance", "email_candidates",
     "recorded_organizer_email", "requested_company_identity_hints", "organizer_company", "organizer_title",
     "why_selected", "business_email", "linkedin_url", "company_website", "enrichment_date",
@@ -96,7 +96,7 @@ def saved_business_answer(task, result, *, contact_page, source_page):
     result["business_answer"]["scope_quality_checks_truncated"] = len(scope_checks) > len(selected_checks)
     result["request"] = {"request": contract.get("request"), "spec": contract.get("spec")}
     fields = {
-        "id", "name", "company", "title", "role", "email", "linkedin", "linkedin_status", "location", "industry",
+        "id", "name", "company", "title", "role", "email", "linkedin", "linkedin_status", "location", "city", "state", "industry",
         "website_url", "company_website", "session_title", "session_date", "session_time", "room", "notes", "email_status", "email_verified_at",
         "email_source", "email_source_url", "email_observed_at", "enrichment_status",
         "enrichment_source", "enriched_on", "fit", "reason", "uncertainty", "email_content_hash", "provider_email_status",

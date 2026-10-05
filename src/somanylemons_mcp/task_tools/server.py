@@ -223,7 +223,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     accepted = {row.get("agency"): row.get("qualified_contacts", 0) for row in agencies}
     contacts = {}
     fields = (
-        "id", "name", "title", "company", "location", "email", "email_status",
+        "id", "name", "title", "company", "location", "city", "state", "email", "email_status",
         "email_verified_at", "email_source", "email_source_url", "email_observed_at", "email_content_hash", "provider_email_status", "enrichment_status", "enrichment_source", "enriched_on",
         "evidence_status", "reason", "fit", "sources", "research_evidence",
         "intro_email_draft", "intro_draft_source_url", "intro_draft_claims", "intro_draft_customer_context",
