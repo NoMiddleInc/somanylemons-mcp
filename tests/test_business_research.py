@@ -7,6 +7,8 @@ import httpx
 
 from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES, invoke_task, task_schemas
 from somanylemons_mcp.task_tools.server import compact_research_answer
+from somanylemons_mcp.task_tools.business_research import BusinessCompany, BusinessResearchSpec
+from pydantic import ValidationError
 
 
 def rendered(result):
@@ -32,6 +34,11 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("budget", spec["properties"])
         count = next(value for value in spec["properties"]["count"]["anyOf"] if value.get("type") == "integer")
         self.assertEqual((count["minimum"], count["maximum"]), (1, 500))
+        fields = next(value for value in spec["properties"]["fields"]["anyOf"] if value.get("type") == "array")
+        self.assertEqual(fields["maxItems"], 40)
+        self.assertTrue({"session_date", "session_time", "room", "email_status", "field_provenance",
+                         "organizer_company", "requested_company_identity_hints"}.issubset(fields["items"]["enum"]))
+        self.assertIn("identity_hints", schema["$defs"]["BusinessCompany"]["properties"])
 
     async def test_dell_cio_and_first15_conference_payloads_use_generic_scoped_endpoint(self):
         calls = []
@@ -42,7 +49,9 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
                 "contract": {"workflow": "business_research", "request": json.loads(request.content)["request"]},
             }})
         for spec in (
-            {"kind": "company_contacts", "companies": [{"name": "Dell", "domain": "dell.com"}], "roles": ["CIO"], "count": 1},
+            {"kind": "company_contacts", "companies": [{"name": "Dell", "domain": "dell.com",
+                "identity_hints": {"hq_city": "Round Rock", "supplied_literal": {"source_row": 7, "confirmed": False}}}],
+                "roles": ["CIO"], "count": 1, "fields": ["email", "name", "website_url", "email_status", "field_provenance"]},
             {"kind": "conference_speakers", "event": {"name": "Technology Congress", "year": 2026, "source_urls": ["https://publisher.example.com/speakers"]}, "count": 15, "all": False},
         ):
             result = await invoke_task("create_business_research_request", {
@@ -58,6 +67,17 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[-1].headers["x-api-key"], "customer")
             self.assertNotIn("budget", body)
         self.assertEqual(len(calls), 2)
+
+    def test_identity_clues_and_field_order_are_bounded_typed_literal_json(self):
+        literal = {"source_row": 7, "clues": ["Chicago", None, True], "nested": {"state": "literal clue"}}
+        self.assertEqual(BusinessCompany(name="Acme", identity_hints=literal).identity_hints, literal)
+        with self.assertRaises(ValidationError):
+            BusinessCompany(name="Acme", identity_hints={"clue": "x" * 10000})
+        with self.assertRaises(ValidationError):
+            BusinessCompany(name="Acme", identity_hints=["wrong container"])
+        BusinessResearchSpec(kind="company_contacts", fields=["name"] * 40)
+        with self.assertRaises(ValidationError):
+            BusinessResearchSpec(kind="company_contacts", fields=["name"] * 41)
 
     async def test_request_only_defers_planning_and_uncertain_retry_reuses_exact_uuid(self):
         calls = []
@@ -134,16 +154,45 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
     def test_delivered_interim_never_closes_original_all_obligation(self):
         task = {"id": 76, "state": "completed", "fulfillment": "fulfilled",
             "contract": {"workflow": "business_research"}, "business_answer": {
-                "contacts": [], "contacts_total": 0, "original_goal_id": 24,
+                "contacts": [], "contacts_total": 0, "original_goal_id": 24, "original_goal_obligation": "open",
                 "closure": "interim_delivered_original_open", "delivery": {"status": "provider_accepted"},
                 "coverage": {"interim": True, "original_goal_id": 24, "original_all_obligation": "open_coverage_unproven"},
                 "interim_results": [{"goal_id": 76, "state": "completed", "fulfillment": "fulfilled", "original_all_obligation": "open"}]}}
         result = compact_research_answer(task)
         self.assertEqual(result["business_answer"]["original_goal_id"], 24)
+        self.assertEqual(result["business_answer"]["original_goal_obligation"], "open")
         self.assertEqual(result["business_answer"]["closure"], "interim_delivered_original_open")
         self.assertEqual(result["business_answer"]["coverage"]["original_all_obligation"], "open_coverage_unproven")
         self.assertEqual(result["business_answer"]["interim_results"][0]["original_all_obligation"], "open")
         self.assertNotIn("full_request_fulfilled", result["business_answer"])
+        task["business_answer"].update(original_goal_obligation="fulfilled", closure="interim_delivered_original_fulfilled")
+        current = compact_research_answer(task)["business_answer"]
+        self.assertEqual(current["original_goal_obligation"], "fulfilled")
+        self.assertEqual(current["closure"], "interim_delivered_original_fulfilled")
+        self.assertEqual(current["coverage"]["original_all_obligation"], "open_coverage_unproven")
+
+    def test_publisher_and_saved_metadata_preserved_with_explicit_provenance_preview_limits(self):
+        row = {"id": "one", "name": "Person", "email": "person@example.com", "session_date": "2026-10-05",
+            "session_time": "09:00", "room": "Main Hall", "organizer_company": "Published Company",
+            "organizer_title": "Published Title", "recorded_organizer_email": "published@example.com",
+            "provider_email_status": "verified", "email_content_hash": "saved-hash",
+            "email_candidates": [{"email": "person@example.com", "source": "Apollo", "status": "unverified"}],
+            "evidence_refs": [{"source_url": "https://example.com", "quote_omitted_for_delivery_policy": True}],
+            "requested_company_identity_hints": {"hq_city": "Chicago"},
+            "public_sources": [{"url": f"https://example.com/{i}"} for i in range(4)],
+            "field_provenance": {f"field{i}": {"source": "Apollo", "source_operation_id": 7, "uncertainty": "x" * 400} for i in range(42)}}
+        answer = compact_research_answer({"id": 79, "business_answer": {"contacts": [row]}})
+        projected = answer["contacts"][0]
+        for field in ("session_date", "session_time", "room", "organizer_company", "organizer_title",
+                      "recorded_organizer_email", "email_content_hash", "provider_email_status", "email_candidates", "requested_company_identity_hints"):
+            self.assertEqual(projected[field], row[field])
+        self.assertFalse(projected["email_candidates_truncated"])
+        self.assertTrue(projected["evidence_refs"][0]["quote_omitted_for_delivery_policy"])
+        self.assertEqual(projected["field_provenance_total"], 42)
+        self.assertEqual(len(projected["field_provenance"]), 40)
+        self.assertEqual(projected["field_provenance"]["field0"]["source_operation_id"], 7)
+        self.assertTrue(projected["field_provenance_truncated"])
+        self.assertTrue(projected["source_references_truncated"])
 
 
 if __name__ == "__main__":
