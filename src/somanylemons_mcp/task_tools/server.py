@@ -225,11 +225,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Return download_url as a clickable Markdown link with filename. Links expire after ten minutes; request a new link when expired. "
             "To analyze or clean a workbook use read_task_spreadsheet: it reads all normal-size saved rows in one call. "
             "Do not page contacts five at a time to retrieve a whole workbook. Never claim a workbook is inaccessible before trying these tools. "
-            "Manage the authenticated account's durable customer research requests. Read the current task before controls; "
-            "use its version and allowed_actions. For every write generate a UUID idempotency_key once and reuse it after "
+            "Manage the authenticated account's durable customer research requests. Read the current task before controls; use its version and allowed_actions. "
+            "Before agency research, discover the account's enabled configurations with list_tasks and use campaign_id for the saved list/ICP the user selected. An OAuth login workspace does not hide the account's own agents. Never guess another customer's agent or switch canonical list bindings. "
+            "For every write generate a UUID idempotency_key once and reuse it after "
             "transport failures. Only create or amend work the user requested. Research may lead to delivery through the "
             "backend's existing authorized customer channel and budget/quality gates. These tools do not authorize prospect "
-            "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. API keys remain pinned to their owner and organization; a token never grants extra authority. An acknowledgment is not completion. "
+            "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. OAuth is limited to its owner's agents across active memberships; developer keys retain their organization boundary. A token never grants another customer's agent. An acknowledgment is not completion. "
             "For an immediate research answer, create the request once and use wait_for_task repeatedly until completed or a real blocker appears. "
             "A wait timeout means work continues in production; reuse the same goal_id, never recreate the request. "
             "Use get_research_answer for a compact customer answer from the task's research_answer field, including its quantitative and qualitative findings. "
@@ -315,15 +316,16 @@ def create_server(api: TaskApiClient) -> FastMCP:
         agencies: Agencies,
         idempotency_key: UUID,
         config_id: PositiveId | None = None,
+        campaign_id: PositiveId | None = None,
         title: Annotated[str, Field(max_length=200)] | None = None,
         count: ContactCount | None = None,
     ) -> dict:
-        """Create explicitly requested agency research using existing criteria, execution availability and account budget. Delivery follows backend policy."""
+        """Create requested agency research (1–10 contacts) with the account's enabled agent and budget. Discover agents with list_tasks. For research against a selected saved list/ICP, pass its campaign_id from list_golden_lists; this applies that customer-owned list's criteria to this request without changing the default agent. Shared read access does not authorize research for another owner. Delivery follows backend policy."""
         body = {"agencies": agency_payload(agencies), "idempotency_key": str(idempotency_key)}
         body.update(
             {
                 key: value
-                for key, value in {"config_id": config_id, "title": title, "count": count}.items()
+                for key, value in {"config_id": config_id, "campaign_id": campaign_id, "title": title, "count": count}.items()
                 if value is not None
             }
         )

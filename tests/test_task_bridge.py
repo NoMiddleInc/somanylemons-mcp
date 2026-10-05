@@ -28,6 +28,21 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   transport=httpx.MockTransport(handler)
   await asyncio.gather(*(invoke_task('get_task',{'goal_id':1},api_url='https://example.com',api_key=key,transport=transport) for key in ('tenant-A','tenant-B')))
   self.assertCountEqual(calls,['tenant-A','tenant-B'])
+
+ async def test_research_request_forwards_selected_list_without_extra_calls(self):
+  calls=[]
+  def handler(request):
+   calls.append(request)
+   return httpx.Response(200,json={'data':{'id':100,'state':'queued','contract':{'count':10}}})
+  result=await invoke_task('create_research_request',{'agencies':['Lockton'],'campaign_id':51,'count':10,'idempotency_key':'22222222-2222-4222-8222-222222222222'},api_url='https://example.com',api_key='owner',transport=httpx.MockTransport(handler))
+  self.assertEqual(len(calls),1)
+  self.assertEqual(calls[0].url.path,'/api/v1/agent-tasks')
+  body=json.loads(calls[0].content)
+  self.assertEqual(body['campaign_id'],51)
+  self.assertEqual(body['count'],10)
+  self.assertEqual(body['agencies'],['Lockton'])
+  self.assertNotIn('config_id',body)
+  self.assertIn('queued',str(result))
  async def test_artifact_resource_uses_same_owner_and_rejects_injection(self):
   calls=[]
   def handler(request):
