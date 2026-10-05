@@ -41,3 +41,10 @@ class HistoryAnswerParityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(waited["task"]["conference_answer"], conference)
         self.assertFalse(waited["task"]["action_is_scheduled"])
         self.assertEqual(dict(calls[-1].url.params), {"view": "answer"})
+
+    async def test_instructions_distinguish_public_fallback_meaning_and_worker_steps(self):
+        server = create_server(TaskApiClient(TaskApiConfig("https://example.com", "fake-token")))
+        self.assertIn("completed public fallback did not record an address", server.instructions)
+        self.assertIn("Never paraphrase this as Apollo returning no result", server.instructions)
+        self.assertIn("never people or contacts", server.instructions)
+        self.assertIn("Do not add a structural public-email availability theory", server.instructions)
