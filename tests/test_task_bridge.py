@@ -115,6 +115,11 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
 
         def handler(request):
             calls.append(request)
+            if not request.url.params.get("view") and request.method == "GET":
+                return httpx.Response(200, json={"data": {
+                    "events": [], "state": "completed",
+                    "apollo_credit_budget": {"remaining_credits": 0},
+                }})
             return httpx.Response(200, json={"data": task})
 
         arguments = {"goal_id": 43}
@@ -281,8 +286,14 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
         answer = json.loads(content[0].text)
         if isinstance(result, tuple):
             self.assertEqual(answer, result[1])
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0].headers["x-api-key"], "owner")
+        include_history = name == "get_task" and arguments.get("include_history")
+        self.assertEqual(len(calls), 2 if include_history else 1)
+        for request in calls:
+            self.assertEqual(request.headers["x-api-key"], "owner")
+        if include_history:
+            self.assertEqual(calls[1].method, "GET")
+            self.assertEqual(calls[1].url.path, "/api/v1/agent-tasks/43")
+            self.assertEqual(dict(calls[1].url.params), {})
         if name == "wait_for_task":
             answer = answer["task"]
         return answer, calls[0]
@@ -309,7 +320,7 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("retry", answer["allowed_actions"])
                 self.assertEqual(request.method, "GET")
                 self.assertEqual(request.url.path, "/api/v1/agent-tasks/43")
-                self.assertEqual(dict(request.url.params), {} if arguments.get("include_history") else {"view": "answer"})
+                self.assertEqual(dict(request.url.params), {"view": "answer"})
                 self.assertNotIn("internal.example", json.dumps(answer))
                 self.assertNotIn("private", json.dumps(answer))
                 self.assertNotIn("provider_balance", json.dumps(answer))
