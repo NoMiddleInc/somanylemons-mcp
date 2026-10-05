@@ -89,8 +89,8 @@ def public_blocker(blocker):
 
 
 def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
-    from .provenance import bounded_email_provenance
     """Project only saved, current-scope customer facts; never qualify rows locally."""
+    from .provenance import bounded_email_provenance
     result = {key: task.get(key) for key in (
         "id", "title", "state", "fulfillment", "progress", "next_action",
         "next_run_at", "artifacts", "version", "allowed_actions", "manual_review_required", "action_is_scheduled",
@@ -267,6 +267,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Return download_url as a clickable Markdown link with filename. Links expire after ten minutes; request a new link when expired. "
             "To analyze or clean a workbook use read_task_spreadsheet: it reads all normal-size saved rows in one call. "
             "Do not page contacts five at a time to retrieve a whole workbook. Never claim a workbook is inaccessible before trying these tools. "
+            "Email provenance calendar summaries group each distinct saved clock by calendar date; exact timestamp groups are paginated with source_page. Report their explicit totals and omitted counts, never treat a preview as all records. Contact pages contain five rows; use the returned pagination instead of inventing a workbook page size. "
             "Manage the authenticated account's durable customer research requests. Read the current task before controls; use its version and allowed_actions. "
             "Before agency research, discover the account's enabled configurations with list_tasks and use campaign_id for the saved list/ICP the user selected. An OAuth login workspace does not hide the account's own agents. Never guess another customer's agent or switch canonical list bindings. "
             "For every write generate a UUID idempotency_key once and reuse it after "
