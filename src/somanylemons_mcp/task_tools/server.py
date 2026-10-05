@@ -14,6 +14,7 @@ from mcp.types import ResourceLink, ToolAnnotations
 from pydantic import BaseModel, Field
 
 from .client import TaskApiClient, TaskApiConfig, TaskApiError
+from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=10)]
@@ -112,7 +113,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     """Project only saved, current-scope customer facts; never qualify rows locally."""
     from .provenance import bounded_email_provenance
     result = {key: task.get(key) for key in (
-        "id", "title", "state", "fulfillment", "progress", "next_action",
+        "id", "title", "state", "fulfillment", "progress", "next_action", "current_answer_goal_id",
         "next_run_at", "artifacts", "version", "allowed_actions", "manual_review_required", "action_is_scheduled",
     )}
     allowance = public_apollo_allowance(task.get("apollo_credit_budget"))
@@ -178,7 +179,10 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
             "sources_total": len(conference.get("sources", [])),
         }
         result["request"] = task.get("contract", {}).get("request")
-        return result
+        current = result.get("current_answer_goal_id")
+        if type(current) is int and current > 0:
+            result["answer_is_current_recorded_goal"] = current == task.get("id")
+        return bounded_examples_and_artifacts(result)
     answer = task.get("research_answer")
     result["research_answer"] = dict(answer) if isinstance(answer, dict) else None
     agencies = answer.get("agencies", []) if isinstance(answer, dict) else []
@@ -284,6 +288,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
     server = FastMCP(
         "ProducerSpark Tasks",
         instructions=(
+            "Use list_tasks to navigate obligations, not to answer final research or delivery readiness. For a conference row with current_answer_goal_id, read get_research_answer for that exact goal. Listed original-goal worker progress and its review blocker are not the latest outcome's counts or all required delivery gates. Artifact row_count counts speaker/session appearances, not unique people; Email-cell counts likewise differ from unique people with a recorded email. For missing emails, use enrichment_summary.missing_email_people and missing_email_enrichment_status_counts_by_person. Global unfinished people can include people with a recorded email; use unfinished_with_recorded_email_people and unfinished_without_recorded_email_people instead of adding all global blockers to the missing-email causes. Completed enrichment without a selected address does not prove any particular provider returned empty results or that an address is genuinely unavailable. Identity unresolved does not mean unresolvable, structurally unavailable, or impossible to improve with further evidence. Use recorded_email_date_summary's separate clocks when present. Never assign a date to all saved_result_reused or completed people from an example, one source, a common timestamp, or a status label. Paginated exact/calendar groups retain their explicit omitted totals; a preview is not the entire cohort. Status counts describe a cumulative saved snapshot, not new provider calls, new sources opened, or actions performed by the current goal. A saved succeeded stage does not prove completion happened after the user's Claude session ended or support an elapsed-time calculation without the relevant recorded timestamps. conference_answer.sources describes captured organizer/program source evidence. Separately report recorded email-source observations from row provenance and public-source receipts; do not claim the organizer is the only observed source in the entire workflow while public email-source evidence is also recorded. Declared source_urls alone remain unobserved targets. Preserve the distinction between observed source access and independently proven full roster/session coverage. preliminary_review_artifact refers to the separate interim-snapshot capability. Its null value does not mean there is no saved workbook available for HERE-first inspection. A recorded canonical_review_artifact availability fact with matched scope/hash/validation can establish a validated review file; otherwise a top-level listed artifact only establishes retrieval availability. Offer or retrieve an authorized clearly labeled partial workbook here, state its actual gaps, and keep final fulfillment and sends held. Do not label an immutable saved artifact a live working document or say clearing internal review alone completes the research.  A positive current_answer_goal_id is backend-proven scoped navigation, including pending continuations without a new artifact. If answer_is_current_recorded_goal is false, follow that ID for current progress unless the user explicitly asks for the historical snapshot. saved_review_workbook.metadata_recorded establishes saved metadata and a scoped retrieval action, not verified bytes or final delivery; use its artifact_retrieval to inspect the authorized partial file here. Each email clock summary is complete for that distinct clock; missing-email status and unfinished-email-presence are separate partitions, not additive cohorts. "
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link. "
             "Give the requested result first; omit sample contact tables, internal steps and repeated caveats unless asked. "
             "For an ICP definition or targeting criteria use get_my_icp. For an ICP LIST, main list, golden list, prospect list or download my list use get_prospect_list. Discover all accessible lists with list_golden_lists and read every saved contact with read_golden_list. "
@@ -318,10 +323,11 @@ def create_server(api: TaskApiClient) -> FastMCP:
     async def list_tasks(
         state: TaskView = "", page: Annotated[int, Field(ge=1, le=100000)] = 1
     ) -> dict:
-        """List customer obligations with actual progress, blockers, next time and available actions."""
-        return await api.request(
+        """Navigate obligations. Follow backend current_answer_goal_id with get_research_answer for current conference counts and all delivery gates. Listed progress counts original-goal worker steps."""
+        response = await api.request(
             "GET", "/api/v1/agent-tasks", params={"state": state, "page": page}
         )
+        return list_task_navigation(response)
 
     @server.tool(annotations=READ)
     async def get_task(goal_id: PositiveId, include_history: bool = False) -> dict:
