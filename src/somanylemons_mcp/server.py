@@ -137,7 +137,7 @@ server = Server("somanylemons")
 
 @server.list_tools()
 async def list_tools():
-    return [
+    tools = [
         # --- Content Creation (async) ---
         Tool(
             name="create_reels",
@@ -812,6 +812,9 @@ async def list_tools():
 
     ]
 
+    from .task_bridge import task_schemas
+    return tools + await task_schemas()
+
 
 # ---------------------------------------------------------------------------
 # Tool dispatch
@@ -926,8 +929,25 @@ def _reject_local_fs_tool(tool_name: str) -> list:
     }, indent=2))]
 
 
+@server.read_resource()
+async def read_resource(uri):
+    from mcp.server.lowlevel.helper_types import ReadResourceContents
+    from .task_bridge import read_task_artifact
+    key = _session_api_key.get() if REMOTE_MODE else (_session_api_key.get() or API_KEY)
+    content = await read_task_artifact(uri, api_url=API_URL, api_key=key)
+    return [ReadResourceContents(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+
+
+from .task_bridge import TASK_TOOL_NAMES
+TOOL_ROUTES.update({name: ("TASK", "") for name in TASK_TOOL_NAMES})
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
+    from .task_bridge import invoke_task
+    if TOOL_ROUTES.get(name, (None,))[0] == "TASK":
+        key = _session_api_key.get() if REMOTE_MODE else (_session_api_key.get() or API_KEY)
+        return await invoke_task(name, arguments, api_url=API_URL, api_key=key)
     # In remote (hosted) mode, reject tools that require local filesystem access.
     if REMOTE_MODE and name in _LOCAL_FS_TOOLS:
         return _reject_local_fs_tool(name)
