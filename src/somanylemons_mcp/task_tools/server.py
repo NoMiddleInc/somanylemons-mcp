@@ -52,11 +52,16 @@ def agency_payload(agencies):
 
 
 def public_blocker(blocker):
-    """Expose only the canonical customer quota cause from operator diagnostics."""
+    """Expose only canonical shared approval or historical quota diagnostics."""
     if not isinstance(blocker, dict):
         return None
     reason = blocker.get("reason")
     if blocker.get("party") == "operator":
+        approval = re.fullmatch(
+            r"Apollo approval required after ([0-9]{1,10}) total attempted billable contacts\. "
+            r"No provider request was sent\.",
+            reason if isinstance(reason, str) else "",
+        )
         matched = re.fullmatch(
             r"Prospect enrichment quota exceeded\. ([0-9]{1,10}) enrichment credits remain until "
             r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -64,7 +69,13 @@ def public_blocker(blocker):
             reason if isinstance(reason, str) else "",
         )
         reason = "Research needs an internal review before completion."
-        if matched:
+        if approval:
+            reason = (
+                "ProducerSpark approval needed to extend the shared Apollo allowance of "
+                f"{int(approval[1])} conservative billable lookup attempts. "
+                "No provider request was sent."
+            )
+        elif matched:
             try:
                 reset_at = datetime.fromisoformat(matched[2].replace("Z", "+00:00"))
             except ValueError:

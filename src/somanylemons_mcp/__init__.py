@@ -1,3 +1,3 @@
 """SoManyLemons MCP Server — AI-powered content creation via Model Context Protocol."""
 
-__version__ = "0.6.4"
+__version__ = "0.6.5"

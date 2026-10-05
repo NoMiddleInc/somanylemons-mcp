@@ -129,6 +129,7 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
         if isinstance(result, tuple):
             self.assertEqual(answer, result[1])
         self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].method, "GET")
         self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/43")
         self.assertEqual(calls[0].url.params["view"], "answer")
         self.assertEqual(calls[0].headers["x-api-key"], "owner")
@@ -153,6 +154,63 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(answer["research_answer"]["counts"]["qualified_contacts"], 0)
                 self.assertIn("retry", answer["allowed_actions"])
                 self.assertNotIn("http", answer["blocker"]["reason"])
+
+    async def test_shared_apollo_approval_is_exposed_without_claiming_provider_balance(self):
+        reason = (
+            "Apollo approval required after 2000 total attempted billable contacts. "
+            "No provider request was sent."
+        )
+        for name in ("get_task", "get_research_answer", "wait_for_task"):
+            with self.subTest(tool=name):
+                answer = await self.read_public_task(name, reason)
+                self.assertEqual(answer["blocker"], {
+                    "party": "operator",
+                    "reason": (
+                        "ProducerSpark approval needed to extend the shared Apollo allowance of "
+                        "2000 conservative billable lookup attempts. No provider request was sent."
+                    ),
+                })
+                self.assertEqual(answer["state"], "needs_attention")
+                self.assertEqual(answer["research_answer"]["counts"], {
+                    "qualified_contacts": 0, "pending_contacts": 51,
+                })
+                self.assertEqual(answer["progress"], {"completed": 0, "total": 4})
+                self.assertIn("retry", answer["allowed_actions"])
+                self.assertNotIn("remaining", answer["blocker"]["reason"])
+                self.assertNotIn("balance", answer["blocker"]["reason"])
+                self.assertNotIn("invoiced", answer["blocker"]["reason"])
+                self.assertNotIn("http", answer["blocker"]["reason"])
+
+    async def test_noncanonical_shared_approval_diagnostics_stay_redacted(self):
+        canonical = (
+            "Apollo approval required after 2000 total attempted billable contacts. "
+            "No provider request was sent."
+        )
+        reasons = [
+            "Internal details: " + canonical,
+            canonical + " https://internal.example/debug?token=private",
+            canonical + "\n",
+            canonical.replace("2000", "-2000"),
+            canonical.replace("2000", "2000.5"),
+            canonical.replace("2000", "2,000"),
+            canonical.replace("2000", "٢٠٠٠"),
+            canonical.replace("2000", "20000000000"),
+            canonical.replace("attempted billable", "invoiced"),
+            canonical.replace("No provider request was sent.", "Provider request was sent."),
+            None,
+            2000,
+            {"internal": "private"},
+        ]
+        for name in ("get_task", "get_research_answer", "wait_for_task"):
+            for reason in reasons:
+                with self.subTest(tool=name, reason=reason):
+                    answer = await self.read_public_task(name, reason)
+                    self.assertEqual(answer["blocker"], {
+                        "party": "operator",
+                        "reason": "Research needs an internal review before completion.",
+                    })
+                    self.assertNotIn("internal.example", json.dumps(answer))
+                    self.assertNotIn("private", json.dumps(answer))
 
     async def test_unknown_or_extended_operator_diagnostics_stay_redacted(self):
         canonical = (
