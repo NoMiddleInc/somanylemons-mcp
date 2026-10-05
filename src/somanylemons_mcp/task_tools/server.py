@@ -53,7 +53,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     """Project only saved, current-scope customer facts; never qualify rows locally."""
     result = {key: task.get(key) for key in (
         "id", "title", "state", "fulfillment", "progress", "next_action",
-        "next_run_at", "artifacts", "version", "allowed_actions",
+        "next_run_at", "artifacts", "version", "allowed_actions", "manual_review_required", "action_is_scheduled",
     )}
     conference = task.get("conference_answer")
     if isinstance(conference, dict):
@@ -213,6 +213,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             " When quoting a saved intro_email_draft, copy its exact characters and paragraph breaks, including Unicode curly apostrophes; do not normalize punctuation or rewrite the body. "
             "A false delivery_verified value means delivery has not been verified by that answer; it does not establish that no delivery occurred. Reconcile it with the saved task fulfillment and delivery records before making delivery claims."
             " Describe retrieval side effects separately from historical delivery: say no new email was sent during this retrieval, then state the recorded customer-workbook delivery status. Never use an unqualified no email was sent when saved delivery exists. Distinguish authorized customer workbook delivery from prospect outreach. The progress counter measures worker steps, never contacts. Use research_answer.counts, saved_email_status_counts and email_gaps for actual contact/email coverage. "
+            "Declared supported event identity is registry metadata, not proof of an opened publisher page. Use publisher_source_observed and source_access_unproven; when research_not_started is true, say no contact research has been completed. An available operator retry is not a successful autonomous research solution. Do not promise an undeployed fallback. Use aggregate candidate_people and candidate_examples instead of walking every page to count candidates; aim for at most five tool calls for one question. For conferences, use conference_answer.enrichment_summary exact status_counts_by_person and blocker_counts_by_person; never extrapolate counts from the five-row preview. A succeeded enrichment controller or 43/44 completed worker steps does not mean enrichment is nearly complete. Foreground actual unfinished people and blockers. A needs_attention or review-hold request requires operator action; do not call next_run_at a scheduled execution or promise an automatic resolution. Do not infer that government or any employer emails are impossible or will remain unavailable; state only recorded results and bounded research limitations. Candidate addresses remain unselected when identity is unresolved, even when shown in candidate_examples. "
             "An email_status of public_source_unverified means an address was published on the recorded official source, not verified deliverable. Report email_source_url/email_observed_at separately from saved provider enrichment and its earlier verification status; never treat the public observation date as a verification date. An unfinished overall request can contain completed saved enrichment and verification for individual contacts; report those dates/statuses without claiming the full request is finished."
         ),
     )
