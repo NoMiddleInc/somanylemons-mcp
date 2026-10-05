@@ -15,7 +15,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('source_urls',task['conference_answer']['event'])
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
-  self.assertEqual(len(tools),21)
+  self.assertEqual(len(tools),23)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
   self.assertEqual(set(tools['create_conference_research_request'].inputSchema['properties']['event_id']['enum']), {'acams-las-vegas-2026','rsa-usa-2026','icba-live-2026','acfe-global-2026','aba-aml-fraud-2026','afp-2026'})

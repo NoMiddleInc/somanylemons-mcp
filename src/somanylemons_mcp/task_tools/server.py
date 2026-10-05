@@ -507,6 +507,29 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return compact_research_answer(await api.request("POST", "/api/v1/agent-tasks", body=body))
 
     @server.tool(annotations=WRITE)
+    async def request_agency_first15_milestone(
+        goal_id: PositiveId, expected_version: PositiveId, expected_revision: PositiveId, idempotency_key: UUID,
+    ) -> dict:
+        """Queue an optional 15-contact snapshot on an existing ALL agency task.
+
+        Preserves original criteria and budgets. Does not resume paused work,
+        create another research task, send email or fulfill the full request.
+        """
+        return await api.request("POST", f"/api/v1/agent-tasks/{goal_id}/milestones", body={
+            "expected_version": expected_version, "expected_revision": expected_revision,
+            "idempotency_key": str(idempotency_key)})
+
+    @server.tool(annotations=READ)
+    async def get_agency_milestone(goal_id: PositiveId, milestone_id: PositiveId | None = None,
+                                   page: Annotated[int, Field(ge=1, le=3)] = 1) -> dict:
+        """Read saved milestone metadata or a checked five-contact page.
+
+        A milestone never establishes completion of the original ALL search.
+        """
+        return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/milestones",
+                                 params={"page": page, **({"milestone_id": milestone_id} if milestone_id else {})})
+
+    @server.tool(annotations=WRITE)
     async def create_conference_research_request(
         event_id: Literal["acams-las-vegas-2026", "rsa-usa-2026", "icba-live-2026", "acfe-global-2026", "aba-aml-fraud-2026", "afp-2026"],
         request: Annotated[str, Field(min_length=1, max_length=2000)],
