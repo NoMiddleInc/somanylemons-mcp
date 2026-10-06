@@ -220,7 +220,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     drafts = {}
     for child in tasks:
         if child.get("capability") == "agency.artifact_prepare":
-            for row in child.get("result", {}).get("rows", []):
+            for row in (child.get("result") or {}).get("rows", []):
                 if row.get("id"):
                     drafts[str(row["id"])] = row
     accepted = {row.get("agency"): row.get("qualified_contacts", 0) for row in agencies}
@@ -234,7 +234,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     for child in tasks:
         if child.get("capability") != "agency.research":
             continue
-        saved = child.get("result", {})
+        saved = child.get("result") or {}
         agency = (saved.get("agency") or {}).get("name", child.get("title"))
         allowed_count = accepted.get(agency, 0)
         for row in saved.get("rows", [])[:allowed_count]:
