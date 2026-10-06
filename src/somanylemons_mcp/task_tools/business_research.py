@@ -80,7 +80,7 @@ def saved_business_answer(task, result, *, contact_page, source_page):
     result["business_answer"] = {key: value for key, value in saved.items() if key in {
         "counts", "coverage", "spec", "requested", "delivery", "citation_basis", "limitations", "full_request_fulfilled",
         "original_goal_id", "original_goal_obligation", "interim_results", "closure", "workflow", "state", "fulfillment", "next_action", "blockers",
-        "contract_revision", "contract_hash", "current_policy_hash", "review_scope_current", "fulfillment_review",
+        "contract_revision", "contract_hash", "current_policy_hash", "review_scope_current", "fulfillment_review", "input_required",
     }}
     scope_checks = saved.get("scope_quality_checks") or []
     manifest_hash = (saved.get("fulfillment_review") or {}).get("manifest_hash")

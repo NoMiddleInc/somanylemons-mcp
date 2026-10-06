@@ -1,6 +1,7 @@
 """Typed MCP tools; deliberately no Django models, workers or alternate task state."""
 
 import asyncio
+import json
 import re
 import sys
 import time
@@ -13,7 +14,7 @@ from uuid import UUID
 from mcp.server.fastmcp import FastMCP
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import ResourceLink, ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from .client import TaskApiClient, TaskApiConfig, TaskApiError
 from .feedback_review import brief_feedback_projection, feedback_projection, read_feedback_attachment_resource
@@ -554,6 +555,22 @@ def create_server(api: TaskApiClient) -> FastMCP:
         if inputs is not None:
             body["inputs"] = inputs
         return compact_research_answer(await api.request("POST", f"/api/v1/agent-tasks/{goal_id}/actions", body=body))
+
+    @server.tool(annotations=WRITE)
+    async def supply_business_inputs(
+        goal_id: PositiveId,
+        spec: Annotated[dict[str, JsonValue], Field(description="Copy the saved partial_spec and fill only input_required.missing_fields with literal customer criteria; at most 20000 serialized JSON characters. Backend validates scope, fields and authority.")],
+        expected_version: PositiveId,
+        expected_revision: PositiveId,
+        input_binding: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")],
+        idempotency_key: UUID,
+        reason: Reason,
+    ) -> dict:
+        """Fill missing criteria on the existing business research request. Read its saved input_required first and preserve the returned version, revision, binding and existing criteria. Reuse the UUID if the response is uncertain. This does not authorize a new request, budget or outreach."""
+        if len(json.dumps(spec)) > 20000:
+            raise TaskApiError("Business input must fit within 20000 serialized JSON characters.")
+        return await control(goal_id, "supply_input", expected_version, idempotency_key, reason,
+            {"spec": spec, "expected_revision": expected_revision, "input_binding": input_binding})
 
     @server.tool(annotations=WRITE)
     async def supply_agency_names(

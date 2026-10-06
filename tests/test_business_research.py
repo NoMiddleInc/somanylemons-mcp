@@ -9,6 +9,7 @@ from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES, invoke_task, task_sche
 from somanylemons_mcp.task_tools.server import compact_research_answer
 from somanylemons_mcp.task_tools.business_research import BusinessCompany, BusinessResearchSpec
 from pydantic import ValidationError
+from mcp.server.fastmcp.exceptions import ToolError
 
 
 def rendered(result):
@@ -17,6 +18,66 @@ def rendered(result):
 
 
 class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_business_criteria_uses_original_goal_and_exact_control_binding(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertIn("supply_business_inputs", tools)
+        schema = tools["supply_business_inputs"].inputSchema
+        self.assertEqual(set(schema["required"]), {
+            "goal_id", "spec", "expected_version", "expected_revision", "input_binding",
+            "idempotency_key", "reason",
+        })
+        calls = []
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": {
+                "id": 71, "state": "queued", "version": 4,
+                "contract": {"workflow": "business_research"},
+            }})
+        spec = {"kind": "company_contacts", "companies": [{"name": "Dell"}],
+                "roles": ["CIO"], "count": 15, "all": False,
+                "fields": ["name", "email", "linkedin"], "fields_explicit": True,
+                "person_name": "", "event": {}}
+        args = {"goal_id": 71, "spec": spec, "expected_version": 3,
+                "expected_revision": 1, "input_binding": "a" * 64,
+                "idempotency_key": "22222222-2222-4222-8222-222222222222",
+                "reason": "The customer supplied the missing company."}
+        result = await invoke_task("supply_business_inputs", args, api_url="https://example.com",
+                                   api_key="customer", transport=httpx.MockTransport(handler))
+        self.assertEqual(rendered(result)["id"], 71)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/71/actions")
+        self.assertEqual(json.loads(calls[0].content), {
+            "action": "supply_input", "expected_version": 3,
+            "idempotency_key": args["idempotency_key"], "reason": args["reason"],
+            "inputs": {"spec": spec, "expected_revision": 1, "input_binding": "a" * 64},
+        })
+        self.assertEqual(calls[0].headers["x-api-key"], "customer")
+
+    def test_saved_business_input_proof_is_available_without_local_scope_inference(self):
+        proof = {"status": "awaiting_criteria", "missing_fields": ["companies"],
+                 "partial_spec": {"kind": "company_contacts", "count": 15},
+                 "expected_version": 3, "expected_revision": 1, "input_binding": "a" * 64}
+        answer = compact_research_answer({"id": 71, "state": "waiting_customer",
+            "contract": {"workflow": "business_research"},
+            "business_answer": {"input_required": proof, "full_request_fulfilled": False}})
+        self.assertEqual(answer["business_answer"]["input_required"], proof)
+        self.assertFalse(answer["business_answer"]["full_request_fulfilled"])
+
+    async def test_invalid_business_input_envelopes_never_reach_the_http_action(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": {}})
+        base = {"goal_id": 71, "spec": {"kind": "company_contacts"}, "expected_version": 3,
+                "expected_revision": 1, "input_binding": "a" * 64,
+                "idempotency_key": "22222222-2222-4222-8222-222222222222", "reason": "Missing criteria."}
+        for update in ({"input_binding": "invalid"}, {"expected_revision": 0},
+                       {"spec": {"person_name": "x" * 20001}}):
+            with self.assertRaises(ToolError):
+                await invoke_task("supply_business_inputs", {**base, **update},
+                    api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+        self.assertEqual(calls, [])
+
     async def test_generic_tool_schema_exposes_roles_and_typed_bounded_requests(self):
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(set(tools), TASK_TOOL_NAMES)
