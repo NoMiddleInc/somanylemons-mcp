@@ -26,6 +26,15 @@ PUBLICATION_BINDING = {
     "validation_revision_basis": "reviewed_post_delivery_current_revisions",
     "validation_receipt_sha256": "7bc84eb88107e9c4255ea92f8a2f6454bfeb83495799c7a08f32a0c5dc82aa60",
 }
+# The backend proves this presentation-only continuation against its saved
+# event/manifest. It does not amend the historical 2/1 publication or establish
+# delivery-time revisions. Accept no arbitrary current-revision relabeling.
+CONTINUATION_BINDING = {
+    "approval_key": "0b8fada3-dfb3-40dc-a6e2-1cae86227e2a",
+    "current_native_revision": 3,
+    "validation_revision": 2,
+    "manifest_hash": "623845cbdbf928c325d745e70b7691d1947c186dd5c4332784a059d1d9932258",
+}
 MAX_CONTACTS = 1000
 STEPS_PER_CONTACT = 6
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -39,6 +48,8 @@ DTO_KEYS = frozenset({
     "recorded_verification_is_fresh", "retrieval_effects", "counts", "selected_review_contacts",
     "draft_sequences", "csv_headers", "csv_attachment_roles", "attachments",
 })
+FACTS_DTO_KEYS = DTO_KEYS - {"draft_sequences"}
+DRAFT_CONTACT_FIELD = "Draft email for you to send"
 CONTACT_FIELDS = frozenset({
     "Name", "Why selected", "LinkedIn profile", "Business email", "Draft email for you to send",
     "Stable prospect ID", "Proposed action", "Membership change applied", "Agency",
@@ -69,6 +80,18 @@ def _fields(row, required):
     _require(all(isinstance(key, str) and isinstance(value, str) and len(value) <= 100000
                  for key, value in fields.items()))
     return fields
+
+
+def _prospect_draft_field(name):
+    separated = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(name or ""))
+    key = re.sub(r"[^a-z0-9]+", " ", separated.casefold()).strip()
+    return bool(
+        re.search(r"\b(?:draft|drafts|sequence|sequences)\b", key)
+        or key.startswith("intro copy") or key in {"prospect intro", "intro overrides"}
+        or (key.startswith("intro ") and re.search(r"\b(?:email|subject|body|source)\b", key))
+        or key in {"prospect email body", "prospect email subject", "prospect email copy",
+                   "email body", "email subject", "email copy"}
+    )
 
 
 def _attachment_path(task, snapshot, descriptor):
@@ -119,7 +142,11 @@ def _validate_feedback_snapshot(task):
                  and snapshot["reason"] == "saved_feedback_binding_or_integrity_invalid"
                  and snapshot["read_only"] is True and snapshot["new_research_or_delivery"] is False)
         return snapshot
-    _require(set(snapshot) == DTO_KEYS and snapshot.get("version") == VERSION)
+    # customer_research_facts applies the mandatory no-draft policy recursively
+    # to this otherwise unchanged v2 DTO. This is an exact second wire shape,
+    # not a missing-field fallback or a new historical publication version.
+    facts_only = set(snapshot) == FACTS_DTO_KEYS
+    _require((facts_only or set(snapshot) == DTO_KEYS) and snapshot.get("version") == VERSION)
     _require(all(isinstance(snapshot.get(key), str) and 0 < len(snapshot[key]) <= 2000
                  for key in ("lineage_basis", "counting_basis")))
     _require(positive_id(task.get("id")) and isinstance(task.get("research_answer"), dict)
@@ -132,16 +159,35 @@ def _validate_feedback_snapshot(task):
     customer = _record(task.get("customer"))
     _require(positive_id(customer.get("id")) and customer["id"] == scope["client_id"])
     source = _record(snapshot.get("source"))
-    _require(set(source) == set(PUBLICATION_BINDING) | {
+    source_keys = set(PUBLICATION_BINDING) | {
         "manifest_sha256", "original_scope_sha256", "pilot_scope_sha256",
         "delivered_original_contract_revision", "delivered_pilot_contract_revision", "delivered_revision_status",
         "publication_validation",
-    })
+    }
+    continuation = source.get("continuation_provenance")
+    if continuation is not None:
+        continuation = _record(continuation)
+        _require(set(source) == source_keys | {"validation_original_contract_revision", "continuation_provenance"}
+                 and set(continuation) == set(CONTINUATION_BINDING)
+                 and all(continuation.get(key) == value for key, value in CONTINUATION_BINDING.items())
+                 and positive_id(continuation.get("current_native_revision"))
+                 and positive_id(continuation.get("validation_revision"))
+                 and isinstance(continuation.get("approval_key"), str)
+                 and 0 < len(continuation["approval_key"]) <= 140
+                 and source.get("validation_original_contract_revision") == PUBLICATION_BINDING["current_original_contract_revision"]
+                 and positive_id(source.get("validation_original_contract_revision")))
+    else:
+        _require(set(source) == source_keys)
     for key in ("config_id", "client_id", "organization_id", "campaign_id", "original_goal_id"):
         _require(positive_id(source.get(key)) and source[key] == scope[key])
     for key in ("source_job_id", "delivery_job_id", "pilot_goal_id", "current_original_contract_revision", "current_pilot_contract_revision"):
         _require(positive_id(source.get(key)))
-    _require(all(source.get(key) == value for key, value in PUBLICATION_BINDING.items()))
+    for key, value in PUBLICATION_BINDING.items():
+        if continuation is not None and key == "current_original_contract_revision":
+            value = continuation["current_native_revision"]
+        elif continuation is not None and key == "validation_revision_basis":
+            value = "reviewed_immutable_pre_continuation_snapshot"
+        _require(source.get(key) == value)
     publication = _record(source["publication_validation"])
     _require(positive_id(publication.get("original_contract_revision"))
              and positive_id(publication.get("pilot_contract_revision")))
@@ -163,8 +209,15 @@ def _validate_feedback_snapshot(task):
              and positive_id(snapshot.get("current_answer_goal_id")) and snapshot["current_answer_goal_id"] == source["pilot_goal_id"])
     # Snapshot metadata alone cannot establish a native navigation pointer.
     pointer = task.get("current_answer_goal_id")
-    _require(pointer is None or (positive_id(pointer) and pointer == source["pilot_goal_id"]))
-    revision = task.get("contract_revision") or (task.get("contract") or {}).get("task_manager", {}).get("revision")
+    # Historical snapshot navigation remains nested. A proven continuation's
+    # native pointer targets the original ALL goal, never the old paused pilot.
+    expected_pointer = (source["original_goal_id"]
+                        if continuation is not None and task["id"] == source["original_goal_id"]
+                        else source["pilot_goal_id"])
+    _require(pointer is None or (positive_id(pointer) and pointer == expected_pointer))
+    revision = task.get("contract_revision")
+    if revision is None:
+        revision = (task.get("contract") or {}).get("task_manager", {}).get("revision")
     expected_revision = source["current_original_contract_revision"] if task["id"] == source["original_goal_id"] else source["current_pilot_contract_revision"]
     _require(positive_id(revision) and revision == expected_revision)
     review = _record(snapshot.get("review_scope"))
@@ -174,7 +227,10 @@ def _validate_feedback_snapshot(task):
     _require(review.get("partial_roster") is True and review.get("roster_complete") is False
              and review.get("original_request_fulfilled") is False and review.get("remaining_work_held") is True
              and review.get("feedback_state") == "awaiting_client_feedback")
-    _require(task.get("state") == "paused" and task.get("action_is_scheduled") is not True)
+    if continuation is None or task["id"] == source["pilot_goal_id"]:
+        _require(task.get("state") == "paused" and task.get("action_is_scheduled") is not True)
+    # review_scope describes the immutable pilot's historical hold. The active
+    # original goal's current state, controls and progress are independent.
     _require(snapshot.get("native_research_counts_replaced") is False
              and snapshot.get("recorded_verification_is_fresh") is False)
     effects = _record(snapshot.get("retrieval_effects"))
@@ -189,17 +245,23 @@ def _validate_feedback_snapshot(task):
     count = counts.get("selected_review_contact_count")
     _require(positive_id(count) and count <= MAX_CONTACTS)
     email_count = counts.get("recorded_business_email_count")
-    _require(type(email_count) is int and 0 <= email_count <= count
-             and type(counts.get("sequence_step_count")) is int and counts["sequence_step_count"] == count * STEPS_PER_CONTACT)
+    _require(type(email_count) is int and 0 <= email_count <= count)
+    if facts_only:
+        _require(set(counts) == {"selected_review_contact_count", "recorded_business_email_count"})
+    else:
+        _require(type(counts.get("sequence_step_count")) is int and counts["sequence_step_count"] == count * STEPS_PER_CONTACT)
     contacts = snapshot.get("selected_review_contacts")
     sequences = snapshot.get("draft_sequences")
-    _require(isinstance(contacts, list) and len(contacts) == count
-             and isinstance(sequences, list) and len(sequences) == counts["sequence_step_count"])
+    _require(isinstance(contacts, list) and len(contacts) == count)
+    if not facts_only:
+        _require(isinstance(sequences, list) and len(sequences) == counts["sequence_step_count"])
     by_id = {}
     for contact in contacts:
         contact = _record(contact)
         identity = contact.get("stable_prospect_id")
-        fields = _fields(contact, CONTACT_FIELDS)
+        fields = _fields(contact, CONTACT_FIELDS - {DRAFT_CONTACT_FIELD} if facts_only else CONTACT_FIELDS)
+        if facts_only:
+            _require(not any(_prospect_draft_field(key) for key in fields))
         _require(isinstance(identity, str) and 0 < len(identity) <= 200 and identity not in by_id
                  and fields["Stable prospect ID"] == identity
                  and fields["Membership change applied"] == "No" and fields["Proposed action"] in {"KEEP", "REVIEW"}
@@ -207,7 +269,7 @@ def _validate_feedback_snapshot(task):
         by_id[identity] = fields
     _require(sum(bool(fields["Business email"].strip()) for fields in by_id.values()) == email_count)
     seen = set()
-    for sequence in sequences:
+    for sequence in sequences or []:
         sequence = _record(sequence)
         identity, step = sequence.get("stable_prospect_id"), sequence.get("step_number")
         fields = _fields(sequence, SEQUENCE_FIELDS)
@@ -221,7 +283,8 @@ def _validate_feedback_snapshot(task):
             "Name", "Why selected", "LinkedIn profile", "Business email", "Agency", "Review batch/version",
         )))
         _require(step != 1 or fields["Body"] == contact["Draft email for you to send"])
-    _require(Counter(identity for identity, _ in seen) == {identity: STEPS_PER_CONTACT for identity in by_id})
+    if not facts_only:
+        _require(Counter(identity for identity, _ in seen) == {identity: STEPS_PER_CONTACT for identity in by_id})
     attachments = snapshot.get("attachments")
     _require(isinstance(attachments, list) and len(attachments) == 3)
     names = []
@@ -231,15 +294,17 @@ def _validate_feedback_snapshot(task):
         names.append(descriptor["name"])
     _require(len(set(names)) == 3)
     roles = _record(snapshot.get("csv_attachment_roles"))
-    _require(set(roles) == {"workbook", "selected_review_contacts", "draft_sequences"}
-             and set(roles.values()) == set(names))
+    expected_roles = {"workbook", "selected_review_contacts"} if facts_only else {"workbook", "selected_review_contacts", "draft_sequences"}
+    _require(set(roles) == expected_roles and len(set(roles.values())) == len(expected_roles)
+             and set(roles.values()).issubset(names)
+             and (facts_only or set(roles.values()) == set(names)))
     _require(roles["workbook"].endswith(".xlsx")
-             and all(roles[key].endswith(".csv") for key in ("selected_review_contacts", "draft_sequences")))
+             and all(roles[key].endswith(".csv") for key in expected_roles - {"workbook"}))
     for descriptor in attachments:
         expected_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if descriptor["name"] == roles["workbook"] else "text/csv"
         _require(descriptor["mime"] == expected_mime)
     headers = _record(snapshot.get("csv_headers"))
-    _require(set(headers) == {"selected_review_contacts", "draft_sequences"})
+    _require(set(headers) == expected_roles - {"workbook"})
     first_five = ["Name", "Why selected", "LinkedIn profile", "Business email", "Draft email for you to send"]
     for value in headers.values():
         _require(isinstance(value, list) and 5 <= len(value) <= 100
@@ -275,32 +340,46 @@ def feedback_projection(task, *, contact_page=1, details=True):
         "Saved feedback-review contacts and exact draft copy. Separate from native qualified_contacts; "
         "no fresh verification, complete staff roster or fulfillment of the original request is asserted."
     )
+    facts_only = "draft_sequences" not in snapshot
+    if facts_only:
+        result["row_projection_basis"] = (
+            "Saved feedback-review factual fields under the current no-draft policy. "
+            "Historical attachment descriptors still identify original sent bytes, not a new customer deliverable. "
+            "Native qualification, current controls and original fulfillment remain separate."
+        )
+        # These are the original CSV's header strings, including its historical
+        # draft column; do not present them as this facts-only answer's columns.
+        result.pop("csv_headers", None)
     if details:
         contacts = snapshot["selected_review_contacts"][(contact_page - 1) * 5:contact_page * 5]
         identities = {contact["stable_prospect_id"] for contact in contacts}
-        sequences = [step for step in snapshot["draft_sequences"] if step["stable_prospect_id"] in identities]
+        sequences = [step for step in snapshot.get("draft_sequences", []) if step["stable_prospect_id"] in identities]
         result["selected_review_contacts"] = deepcopy(contacts)
         # Detailed contact answers expose the exact intro in selected contact
         # fields. Monthly bodies remain in the authenticated immutable CSV;
         # returning every body here would obscure the requested compact answer.
-        result["draft_sequences"] = [{
-            "stable_prospect_id": step["stable_prospect_id"],
-            "step_number": step["step_number"],
-            "fields": {key: step["fields"][key] for key in (
-                "Step", "Subject", "Status", "Sequence version", "Source sequence version",
-                "Membership change applied", "Outreach enrolled",
-            )},
-            "exact_body_retrieval": "Read the recorded draft_sequences CSV feedback attachment; bodies are not rewritten here.",
-            "body_omitted_from_compact_projection": True,
-        } for step in sequences]
+        if not facts_only:
+            result["draft_sequences"] = [{
+                "stable_prospect_id": step["stable_prospect_id"],
+                "step_number": step["step_number"],
+                "fields": {key: step["fields"][key] for key in (
+                    "Step", "Subject", "Status", "Sequence version", "Source sequence version",
+                    "Membership change applied", "Outreach enrolled",
+                )},
+                "exact_body_retrieval": "Read the recorded draft_sequences CSV feedback attachment; bodies are not rewritten here.",
+                "body_omitted_from_compact_projection": True,
+            } for step in sequences]
         result["pagination"] = {
             "contact_page": contact_page, "contact_page_size": 5,
             "selected_review_contacts_total": snapshot["counts"]["selected_review_contact_count"],
             "selected_review_contacts_returned": len(contacts),
-            "draft_sequence_steps_total": snapshot["counts"]["sequence_step_count"],
-            "draft_sequence_steps_returned": len(sequences),
-            "draft_sequence_scope": "Metadata for all six saved steps per contact on this page; steps are not people. Exact monthly bodies remain in the authenticated draft sequence CSV.",
         }
+        if not facts_only:
+            result["pagination"].update(
+                draft_sequence_steps_total=snapshot["counts"]["sequence_step_count"],
+                draft_sequence_steps_returned=len(sequences),
+                draft_sequence_scope="Metadata for all six saved steps per contact on this page; steps are not people. Exact monthly bodies remain in the authenticated draft sequence CSV.",
+            )
     else:
         result.pop("csv_headers", None)
     return result
