@@ -21,6 +21,7 @@ from .feedback_review import brief_feedback_projection, feedback_projection, rea
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 from .business_research import BusinessResearchSpec, saved_business_answer
+from .live_progress import live_update
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=10)]
@@ -359,6 +360,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "transport failures. Only create or amend work the user requested. Research may lead to delivery through the "
             "backend's existing authorized customer channel and budget/quality gates. These tools do not authorize prospect "
             "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. OAuth is limited to its owner's agents across active memberships; developer keys retain their organization boundary. A token never grants another customer's agent. An acknowledgment is not completion. "
+            "Use watch_research for interactive prospect finding: show saved counts, stage, evidence and meaningful changes, then suggest campaign planning after completion without sending. "
             "For an immediate research answer, create the request once and use wait_for_task repeatedly until completed or a real blocker appears. "
             "Before the first wait and between waits, give a brief user-facing update using the recorded current_step, state, actual contact/email counts and blockers. "
             "Waits return within a short polling window or when saved progress changes. Never silently chain waits, invent a stage or ETA, or present worker steps as people. "
@@ -432,6 +434,29 @@ def create_server(api: TaskApiClient) -> FastMCP:
         resolved = await resolve_current_answer(api, goal_id, historical_snapshot=historical_snapshot)
         answer = resolution_metadata(compact_research_answer(resolved.current, agency_page, contact_page, source_page), resolved)
         return answer if details or max(agency_page, contact_page, source_page) > 1 else brief_answer(answer)
+
+    @server.tool(title="Watch live prospect research", annotations=READ)
+    async def watch_research(
+        goal_id: PositiveId,
+        cursor: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None = None,
+        timeout_seconds: Annotated[int, Field(ge=0, le=10)] = 10,
+    ) -> dict:
+        """Watch one existing research job. First call returns immediately; pass the returned cursor for subsequent bounded waits. Returns real saved prospect/email counts, stage, up to three findings with evidence, blockers and follow-up suggestions. Show summary and meaningful findings when changed=true. Keep calling with the same requested goal_id and latest cursor while continue_watching=true; show a quiet heartbeat at most every 30 seconds on unchanged results. Stop on completion, pause or blockers. Never interpret steps or preview rows as found prospects; never claim previews are newly discovered. Research runs in the backend when this session closes. Campaign suggestions never send or enroll anyone."""
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            resolved = await resolve_current_answer(
+                api, goal_id,
+                timeout_seconds=min(10.0, max(0.1, deadline - time.monotonic())) if timeout_seconds else 10.0,
+            )
+            answer = resolution_metadata(compact_research_answer(resolved.current), resolved)
+            update = live_update(answer, goal_id)
+            changed = cursor != update["cursor"]
+            remaining = deadline - time.monotonic()
+            if changed or not update["continue_watching"] or remaining <= 0:
+                return {**update, "changed": changed, "poll_after_seconds": 5 if update["continue_watching"] else None}
+            await asyncio.sleep(min(5, remaining))
+            if deadline - time.monotonic() < 0.1:
+                return {**update, "changed": False, "poll_after_seconds": 5}
 
     @server.tool(title="Check research progress", annotations=READ)
     async def wait_for_task(

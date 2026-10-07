@@ -19,8 +19,11 @@ echo ""
 
 # ── Step 1: Install /lemons command ──────────────────────────────────────────
 mkdir -p ~/.claude/commands
-curl -sL "$REPO/commands/lemons.md" -o ~/.claude/commands/lemons.md
+curl -fsSL "$REPO/commands/lemons.md" -o ~/.claude/commands/lemons.md
 echo "  ✓ Installed /lemons command"
+mkdir -p ~/.claude/skills/producerspark
+curl -fsSL "$REPO/skills/producerspark/SKILL.md" -o ~/.claude/skills/producerspark/SKILL.md
+echo "  ✓ Installed /producerspark live prospect workflow"
 
 # ── Step 2: Configure MCP server ─────────────────────────────────────────────
 if command -v claude &>/dev/null && claude mcp list 2>/dev/null | grep -q "somanylemons"; then
@@ -69,5 +72,5 @@ else
 fi
 
 echo ""
-echo "  🍋 Done! Restart Claude Code and type /lemons"
+echo "  🍋 Done! Restart Claude Code and type /producerspark or /lemons"
 echo ""

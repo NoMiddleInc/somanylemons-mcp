@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "somanylemons": {
-      "type": "url",
-      "url": "https://mcp.somanylemons.com/mcp",
+      "type": "http",
+      "url": "https://producerspark.com/mcp",
       "headers": {
         "X-API-Key": "${SML_API_KEY}"
       }

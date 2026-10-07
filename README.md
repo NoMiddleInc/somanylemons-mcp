@@ -168,3 +168,10 @@ Use `wait_for_task` and `get_research_answer` with the returned goal ID, and `ge
 Use a customer-owned API key with `tasks:read` and `tasks:write` for creation and controls, or `tasks:read` for retrieval only. The backend enforces active membership, organization, enabled configuration and existing allowances. Remote MCP sessions bind to a hash of the initializing key; a different key must initialize a new session. Existing content tools retain their original behavior. Standalone `producerspark-tasks-mcp` installation remains available for direct Claude Code use without the hosted content server. Claude Enterprise administrators must permit the selected MCP server; account scope and Enterprise login must be validated separately.
 
 The task transport is vendored from backend commit `5bb0a30e` to keep the hosted image self-contained. Update it from the reviewed standalone package and run the task-bridge, session-isolation and existing content checks together before release. Do not insert real keys into this repository.
+
+
+## Live prospect finding in Claude Code
+
+Use `/producerspark` after running the installer, or the ProducerSpark skill in the plugin. Ask, for example: “Find 50 manufacturing CFOs in Chicago and keep me updated.” The workflow creates one durable backend task and calls `watch_research` with a cursor to show actual saved counts, email coverage, stages and source-backed findings as they change. Research continues if the conversation closes; reconnect to the same task to resume updates.
+
+On completion, it offers to plan an email campaign. This research-only connection cannot enroll or send prospects. Active monitoring uses bounded reads; unsolicited push into idle Claude sessions is not included. See [experience design](docs/live-prospect-experience.md) for behavior and rollout details. The updated hosted MCP must be deployed before the new tool is available to hosted clients.

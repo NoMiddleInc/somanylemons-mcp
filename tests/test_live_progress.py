@@ -1,0 +1,128 @@
+import copy
+import json
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import httpx
+
+from somanylemons_mcp.task_tools import server as server_module
+from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
+from somanylemons_mcp.task_tools.live_progress import live_update
+from somanylemons_mcp.task_tools.server import compact_research_answer, create_server
+from tests.test_research_progress import VirtualClock
+
+
+class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def task(self, **changes):
+        task = {
+            "id": 74, "state": "running", "running": True,
+            "current_step": "Enrich contacts", "version": 1,
+            "contract": {"workflow": "business_research", "spec": {"count": 50}},
+            "business_answer": {
+                "coverage": {"requested_count": 50, "qualified_rows": 5},
+                "counts": {"contacts": 8, "recorded_emails": 3},
+                "rows": [{"name": "Example CFO", "company": "Example Co", "title": "CFO",
+                          "evidence_refs": [{"source_url": "https://example.com/team"}]}],
+            },
+            "progress": {"completed": 49, "total": 50},
+        }
+        task.update(changes)
+        return task
+
+    def update(self, task):
+        return live_update(compact_research_answer(task), 74)
+
+    async def watch(self, tasks, **arguments):
+        clock = VirtualClock()
+        calls = []
+        def handler(request):
+            calls.append(request)
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.path, "/api/v1/agent-tasks/74")
+            return httpx.Response(200, json={"data": copy.deepcopy(tasks[min(len(calls)-1, len(tasks)-1)])})
+        api = TaskApiClient(TaskApiConfig("https://example.com", "mock-key"),
+                            transport=httpx.MockTransport(handler))
+        with patch.object(server_module, "time", SimpleNamespace(monotonic=clock.monotonic)), \
+             patch.object(server_module, "asyncio", SimpleNamespace(sleep=clock.sleep)):
+            content = await create_server(api).call_tool("watch_research", {"goal_id": 74, **arguments})
+        if isinstance(content, tuple):
+            content = content[0]
+        return json.loads(content[0].text), clock, calls
+
+    async def test_first_response_is_immediate_and_uses_contacts_not_steps(self):
+        result, clock, calls = await self.watch([self.task()])
+        self.assertEqual(clock.elapsed, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(result["changed"])
+        self.assertIn("5 of 50 qualified prospects found", result["summary"])
+        self.assertEqual(result["recorded_emails"], 3)
+        self.assertEqual(result["findings"][0]["evidence_refs"][0]["source_url"], "https://example.com/team")
+
+    async def test_cursor_detects_changes_between_calls(self):
+        task = self.task()
+        cursor = self.update(task)["cursor"]
+        newer = copy.deepcopy(task)
+        newer["business_answer"]["coverage"]["qualified_rows"] = 10
+        result, clock, _ = await self.watch([newer], cursor=cursor)
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["found"], 10)
+        self.assertEqual(clock.elapsed, 0)
+
+    async def test_unchanged_and_timestamp_churn_return_bounded_quiet_heartbeat(self):
+        task = self.task()
+        newer = self.task(version=99, updated_at="2026-10-06T20:00:00Z")
+        result, clock, calls = await self.watch([newer], cursor=self.update(task)["cursor"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(clock.elapsed, 10)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(result["continue_watching"])
+
+    async def test_email_and_evidence_updates_return_early(self):
+        task = self.task()
+        for field in ("email", "evidence"):
+            newer = copy.deepcopy(task)
+            if field == "email":
+                newer["business_answer"]["counts"]["recorded_emails"] = 4
+            else:
+                newer["business_answer"]["rows"][0]["evidence_refs"][0]["source_url"] = "https://example.com/new"
+            result, clock, _ = await self.watch([task, newer], cursor=self.update(task)["cursor"])
+            self.assertTrue(result["changed"])
+            self.assertEqual(clock.elapsed, 5)
+
+    async def test_stop_states_and_campaign_suggestion(self):
+        for state in ("blocked", "waiting_customer", "paused", "cancelled", "completed"):
+            result, clock, _ = await self.watch([self.task(state=state, running=False, contract={"workflow": "business_research"},
+                business_answer={"coverage": {"requested_count": 5, "qualified_rows": 5}, "rows": []})])
+            self.assertFalse(result["continue_watching"])
+            self.assertEqual(clock.elapsed, 0)
+            self.assertEqual(result["campaign_action"], "suggest_only")
+            self.assertEqual(any("email campaign" in text for text in result["suggestions"]), state == "completed")
+
+    def test_partial_completion_does_not_offer_launch(self):
+        for changes in ({}, {"fulfillment": "partial"}, {"manual_review_required": True}):
+            result = self.update(self.task(state="completed", **changes))
+            self.assertEqual(result["monitor_status"], "needs_attention")
+            self.assertFalse(any("email campaign" in text for text in result["suggestions"]))
+
+    def test_unknown_counts_and_unqualified_counts_are_honest(self):
+        task = self.task(business_answer={"rows": [{"name": "Candidate"}]})
+        result = self.update(task)
+        self.assertIsNone(result["found"])
+        self.assertIn("not yet recorded", result["summary"])
+        task["business_answer"]["counts"] = {"contacts": 5}
+        self.assertEqual(self.update(task)["count_basis"], "saved contacts")
+
+    async def test_tool_is_exposed_in_hosted_bridge_and_read_only(self):
+        from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES
+        self.assertIn("watch_research", TASK_TOOL_NAMES)
+        tool = next(tool for tool in await create_server(TaskApiClient(
+            TaskApiConfig("https://example.com", "mock-key"))).list_tools() if tool.name == "watch_research")
+        self.assertTrue(tool.annotations.readOnlyHint)
+        self.assertEqual(tool.inputSchema["properties"]["timeout_seconds"]["maximum"], 10)
+
+    def test_plugin_and_wheel_skill_match(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual((root / "skills/producerspark/SKILL.md").read_bytes(),
+                         (root / "src/somanylemons_mcp/skills/producerspark/SKILL.md").read_bytes())
