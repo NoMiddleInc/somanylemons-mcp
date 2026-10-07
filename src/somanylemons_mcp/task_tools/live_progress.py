@@ -92,10 +92,20 @@ def live_update(answer, requested_goal_id):
     if answer.get("current_step"):
         summary += f" Saved stage: {str(answer['current_step'])[:240]}."
     summary += f" Status: {state or 'not recorded'}."
+    conference_review = isinstance(blocker, dict) and blocker.get("party") == "operator" and (
+        blocker.get("reason") == "business_conference_human_review_required"
+        or blocker.get("code") == "business_conference_human_review_required"
+        or str(blocker.get("reason") or "").startswith("Our team is on it. Your conference speaker email request")
+    )
+    if conference_review:
+        summary = ("Our team is on it. Your conference speaker email request is saved for human review. "
+                   "You do not need to resend it.")
     suggestions = []
     if finished:
         suggestions.append("Review or download the saved prospect list.")
         suggestions.append("Would you like to plan an email campaign for these prospects?")
+    elif conference_review:
+        suggestions.append("Our team will review the saved conference speaker email request; no customer retry is needed.")
     elif stop:
         suggestions.append("Review the saved partial results and their remaining gaps.")
         suggestions.append("Explain the specific recorded blocker and the smallest next step; reuse this research task.")
