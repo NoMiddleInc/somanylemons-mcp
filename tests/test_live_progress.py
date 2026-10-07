@@ -105,6 +105,41 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["monitor_status"], "needs_attention")
             self.assertFalse(any("email campaign" in text for text in result["suggestions"]))
 
+    async def test_completed_bounded_delivery_does_not_keep_historical_retry_blockers(self):
+        business = {
+            "state": "completed", "fulfillment": "fulfilled", "closure": "fulfilled",
+            "coverage": {"requested_count": 1, "qualified_rows": 1,
+                         "all_requested": False, "full_coverage_verified": False},
+            "counts": {"contacts": 1, "recorded_emails": 1}, "rows": [],
+            "review_scope_current": True, "fulfillment_review": {"passed": True},
+            "delivery": {"status": "provider_accepted", "receipt": "actual-provider-receipt"},
+            "blockers": [{"reason": "Previous failed attempt"}],
+        }
+        task = self.task(state="completed", running=False, fulfillment="fulfilled",
+                         blocker={"reason": "Previous failed attempt"}, manual_review_required=True,
+                         business_answer=business, contract={"workflow": "business_research", "spec": {"count": 1, "all": False}})
+        result, clock, calls = await self.watch([task])
+        self.assertEqual(result["monitor_status"], "finished")
+        self.assertFalse(result["continue_watching"])
+        self.assertIsNone(result["blocker"])
+        self.assertEqual(result["blockers"], [])
+        self.assertFalse(result["manual_review_required"])
+        self.assertTrue(result["historical_blockers"])
+        self.assertEqual(clock.elapsed, 0)
+        self.assertEqual(len(calls), 1)
+        for change in ({"full_request_fulfilled": False}, {"review_scope_current": False},
+                       {"fulfillment_review": {"passed": False}},
+                       {"coverage": {"requested_count": 1, "qualified_rows": 1,
+                                     "all_requested": True, "full_coverage_verified": False}}):
+            held = copy.deepcopy(task)
+            held["business_answer"].update(change)
+            update = self.update(held)
+            self.assertEqual(update["monitor_status"], "needs_attention")
+            self.assertTrue(update["blocker"])
+        held = copy.deepcopy(task)
+        held["business_answer"]["coverage"] = {"requested_count": 1, "qualified_rows": 1, "all_requested": True}
+        self.assertEqual(self.update(held)["monitor_status"], "needs_attention")
+
     def test_unknown_counts_and_unqualified_counts_are_honest(self):
         task = self.task(business_answer={"rows": [{"name": "Candidate"}]})
         result = self.update(task)

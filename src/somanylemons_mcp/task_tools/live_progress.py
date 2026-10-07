@@ -28,10 +28,31 @@ def live_update(answer, requested_goal_id):
     unit = "qualified prospects" if qualified is not None else "saved contacts"
     state = answer.get("state")
     fulfilled = business.get("full_request_fulfilled")
-    held = bool(answer.get("blocker") or answer.get("manual_review_required") or business.get("blockers"))
+    all_requested = coverage.get("all_requested") is True or spec.get("all") is True
+    coverage_complete = not all_requested or coverage.get("full_coverage_verified") is True
+    blocker = answer.get("blocker")
+    blockers = business.get("blockers")
+    manual_review = answer.get("manual_review_required")
+    # Completed, accepted current evidence outranks retained retry diagnostics.
+    # A bounded count does not claim independently verified whole-market coverage.
+    delivery = business.get("delivery") or {}
+    current_completion = (
+        state in FINISHED and answer.get("fulfillment") == "fulfilled"
+        and business.get("fulfillment") == "fulfilled" and business.get("closure") == "fulfilled"
+        and (business.get("fulfillment_review") or {}).get("passed") is True
+        and business.get("review_scope_current") is not False
+        and delivery.get("status") == "provider_accepted" and bool(delivery.get("receipt"))
+        and fulfilled is not False and coverage_complete and coverage.get("interim") is not True
+        and found is not None and (target is None or found >= target)
+    )
+    historical_blockers = []
+    if current_completion:
+        historical_blockers = ([blocker] if blocker else []) + (blockers if isinstance(blockers, list) else [blockers] if blockers else [])
+        blocker, blockers, manual_review = None, [], False
+    held = bool(blocker or manual_review or blockers)
     finished = (state in FINISHED and fulfilled is not False and not held
                 and answer.get("fulfillment") not in {"partial", "unfulfilled", "pending"}
-                and coverage.get("full_coverage_verified") is not False
+                and coverage_complete
                 and not (found is not None and target is not None and found < target))
     stop = state in ATTENTION or state in FINISHED or held
     samples = []
@@ -48,14 +69,15 @@ def live_update(answer, requested_goal_id):
         "state": state, "stage": answer.get("current_step"),
         "running": answer.get("running"), "found": found, "target": target,
         "count_basis": unit if found is not None else "Contact count not yet recorded",
-        "recorded_emails": emails, "blocker": answer.get("blocker"),
+        "recorded_emails": emails, "blocker": blocker,
         "next_action": answer.get("next_action"), "findings": samples, "sources": sources,
         "coverage": coverage, "enrichment": enrichment,
         "email_status_counts": answer.get("saved_email_status_counts"),
         "enrichment_status_counts": answer.get("saved_enrichment_status_counts"),
-        "limitations": business.get("limitations"), "blockers": business.get("blockers"),
+        "limitations": business.get("limitations"), "blockers": blockers,
+        "historical_blockers": historical_blockers,
         "fulfillment": answer.get("fulfillment"), "full_request_fulfilled": fulfilled,
-        "manual_review_required": answer.get("manual_review_required"),
+        "manual_review_required": manual_review,
         "artifacts": answer.get("artifacts"),
     }
     cursor = hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
