@@ -20,6 +20,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
   self.assertEqual(set(tools['create_conference_research_request'].inputSchema['properties']['event_id']['enum']), {'acams-las-vegas-2026','rsa-usa-2026','icba-live-2026','acfe-global-2026','aba-aml-fraud-2026','afp-2026'})
+  self.assertEqual(tools['create_conference_research_request'].inputSchema['properties']['research_depth']['default'],'standard')
   self.assertNotIn('production_capture',tools['create_conference_research_request'].inputSchema['properties'])
  async def test_concurrent_clients_never_share_keys(self):
   calls=[]
@@ -42,6 +43,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(body['campaign_id'],51)
   self.assertEqual(body['count'],10)
   self.assertEqual(body['agencies'],['Lockton'])
+  self.assertEqual(body['research_depth'],'standard')
   self.assertNotIn('config_id',body)
   self.assertIn('queued',str(result))
  async def test_artifact_resource_uses_same_owner_and_rejects_injection(self):
