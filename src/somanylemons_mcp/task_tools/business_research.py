@@ -50,6 +50,8 @@ class BusinessResearchSpec(BaseModel):
     companies: Annotated[list[BusinessCompany], Field(max_length=200)] | None = None
     roles: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
     person_name: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    person_locations: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
+    per_company_count: Annotated[int, Field(ge=1, le=50)] | None = None
     event: BusinessEvent | None = None
     fields: Annotated[list[BusinessField], Field(min_length=1, max_length=40)] | None = None
     count: Annotated[int, Field(ge=1, le=500)] | None = None
