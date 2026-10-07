@@ -9,7 +9,7 @@ import httpx
 from somanylemons_mcp.task_tools import server as server_module
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 from somanylemons_mcp.task_tools.live_progress import live_update
-from somanylemons_mcp.task_tools.server import compact_research_answer, create_server
+from somanylemons_mcp.task_tools.server import compact_research_answer, create_server, public_blocker
 from tests.test_research_progress import VirtualClock
 
 
@@ -126,3 +126,21 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual((root / "skills/producerspark/SKILL.md").read_bytes(),
                          (root / "src/somanylemons_mcp/skills/producerspark/SKILL.md").read_bytes())
+
+
+class HelpfulBlockerTests(unittest.TestCase):
+    def test_edition_failure_explains_page_verification_without_backend_outage(self):
+        result = public_blocker({"party": "operator", "reason": "managed_browser_edition_unverified"})
+        self.assertIn("page was opened", result["reason"])
+        self.assertIn("dates could not be verified", result["reason"])
+        self.assertNotIn("managed_browser_edition_unverified", result["reason"])
+
+    def test_unknown_operator_details_are_not_leaked(self):
+        result = public_blocker({"party": "operator", "reason": "private credential details"})
+        self.assertEqual(result["reason"], "Research needs an internal review before completion.")
+
+    def test_blocked_research_offers_saved_results_without_a_campaign_or_duplicate(self):
+        result = live_update({"id": 67, "state": "needs_attention", "blocker": {"reason": "Wrong edition"}}, 67)
+        self.assertFalse(result["continue_watching"])
+        self.assertIn("reuse this research task", " ".join(result["suggestions"]))
+        self.assertNotIn("email campaign", " ".join(result["suggestions"]))

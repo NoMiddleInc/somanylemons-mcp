@@ -76,7 +76,12 @@ def public_blocker(blocker):
             r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))\.",
             reason if isinstance(reason, str) else "",
         )
-        reason = "Research needs an internal review before completion."
+        source_issue = "managed_browser_edition_unverified" in str(reason)
+        reason = (
+            "The publisher page was opened, but the requested event edition and dates could not be verified. "
+            "Saved progress is retained; this does not establish that the browser or research service is unavailable."
+            if source_issue else "Research needs an internal review before completion."
+        )
         if approval:
             reason = (
                 "ProducerSpark approval needed to extend the shared Apollo allowance of "
@@ -360,14 +365,14 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "transport failures. Only create or amend work the user requested. Research may lead to delivery through the "
             "backend's existing authorized customer channel and budget/quality gates. These tools do not authorize prospect "
             "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. OAuth is limited to its owner's agents across active memberships; developer keys retain their organization boundary. A token never grants another customer's agent. An acknowledgment is not completion. "
-            "Use watch_research for interactive prospect finding: show saved counts, stage, evidence and meaningful changes, then suggest campaign planning after completion without sending. "
-            "For an immediate research answer, create the request once and use wait_for_task repeatedly until completed or a real blocker appears. "
+            "Use watch_research as the primary live progress tool for interactive prospect finding: show saved counts, stage, evidence and meaningful changes, then suggest campaign planning after completion without sending. "
+            "For an immediate research answer, create the request once and use watch_research with its returned cursor until completed or a real blocker appears. wait_for_task is the compatibility fallback only when watch_research is unavailable; never alternate polling tools for the same watch. "
             "Before the first wait and between waits, give a brief user-facing update using the recorded current_step, state, actual contact/email counts and blockers. "
             "Waits return within a short polling window or when saved progress changes. Never silently chain waits, invent a stage or ETA, or present worker steps as people. "
             "If no new progress is recorded, say that plainly; do not describe queued or blocked work as active research. "
             "A wait timeout means work continues in production; reuse the same goal_id, never recreate the request. "
             "Use get_research_answer for a compact customer answer from the task's research_answer field, including its quantitative and qualitative findings. "
-            "get_task, get_research_answer and wait_for_task follow the backend-recorded current answer by default. historical_snapshot=true reads the exact requested original goal. Returned id/version/allowed_actions belong together; requested_goal_controls and requested_goal_progress describe the original goal separately. Request include_history only for bounded operator event identifiers/dates; grouped history that does not identify the returned goal remains explicitly unavailable, not proof of no earlier email. "
+            "watch_research, get_task, get_research_answer and wait_for_task follow the backend-recorded current answer by default. historical_snapshot=true reads the exact requested original goal. Returned id/version/allowed_actions belong together; requested_goal_controls and requested_goal_progress describe the original goal separately. Request include_history only for bounded operator event identifiers/dates; grouped history that does not identify the returned goal remains explicitly unavailable, not proof of no earlier email. "
             "apollo_credit_budget is current shared Apollo lookup authority; its numeric credit fields count conservative attempted billable lookup units, not provider balance or invoiced charges. "
             "Keep current allowance separate from recorded blocker text: an earlier monthly quota blocker does not establish today's allowance. Missing allowance fields are unknown, never zero. "
             "Available lookups do not clear review, model or source guards, authorize a retry, or prove completion. "
@@ -503,7 +508,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         config_id: PositiveId | None = None,
         spec: BusinessResearchSpec | None = None,
     ) -> dict:
-        """Create autonomous business-contact or conference research for any industry and role, such as Dell's CIO, executives at supplied companies, or published conference speakers. Provide the actual customer question; optional spec sets companies, roles, person_name, event/publisher URLs, fields and requested count (default 15, maximum 500; all=true cannot include a count). Requested coverage never expands account/provider spending limits. The production backend plans, researches, independently checks and delivers to the authorized customer under current policy; unfinished research and uncertain external effects remain held. No prospect outreach or draft-email delivery. Return the goal ID, then use wait_for_task/get_research_answer/get_task_artifact. Reuse this UUID after an uncertain response; never create replacement work."""
+        """Create autonomous business-contact or conference research for any industry and role, such as Dell's CIO, executives at supplied companies, or published conference speakers. Provide the actual customer question; optional spec sets companies, roles, person_name, event/publisher URLs, fields and requested count (default 15, maximum 500; all=true cannot include a count). Requested coverage never expands account/provider spending limits. The production backend plans, researches, independently checks and delivers to the authorized customer under current policy; unfinished research and uncertain external effects remain held. No prospect outreach or draft-email delivery. Return the goal ID, then use watch_research for live progress, get_research_answer for saved results and get_task_artifact for the workbook. Use wait_for_task only as a compatibility fallback when watch_research is unavailable. Reuse this UUID after an uncertain response; never create replacement work."""
         body = {"request": request, "idempotency_key": str(idempotency_key)}
         if config_id is not None:
             body["config_id"] = config_id
@@ -563,7 +568,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         idempotency_key: UUID,
         config_id: PositiveId | None = None,
     ) -> dict:
-        """Research a supported conference in production using existing account limits. Creates durable work with review and communication holds; does not send emails. Reuse the UUID on uncertain retries, then wait_for_task or get_research_answer with the returned goal ID."""
+        """Research a supported conference in production using existing account limits. Creates durable work with review and communication holds; does not send emails. Reuse the UUID on uncertain retries, then watch_research for live progress or get_research_answer for saved results with the returned goal ID. wait_for_task is the compatibility fallback when watch_research is unavailable."""
         body = {"event_id": event_id, "request": request, "idempotency_key": str(idempotency_key)}
         if config_id is not None:
             body["config_id"] = config_id

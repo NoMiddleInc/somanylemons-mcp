@@ -75,7 +75,8 @@ def live_update(answer, requested_goal_id):
         suggestions.append("Review or download the saved prospect list.")
         suggestions.append("Would you like to plan an email campaign for these prospects?")
     elif stop:
-        suggestions.append("Resolve the recorded blocker or review the saved partial results.")
+        suggestions.append("Review the saved partial results and their remaining gaps.")
+        suggestions.append("Explain the specific recorded blocker and the smallest next step; reuse this research task.")
     return {
         **facts, "cursor": cursor, "summary": summary,
         "monitor_status": "finished" if finished else "needs_attention" if stop else "watching",
