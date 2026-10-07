@@ -1,0 +1,26 @@
+{
+  "name": "producerspark",
+  "displayName": "ProducerSpark",
+  "version": "1.0.0",
+  "description": "Find business prospects and conference speakers, follow saved research progress, and download source-backed contact workbooks from your ProducerSpark account.",
+  "author": {
+    "name": "ProducerSpark",
+    "email": "support@somanylemons.com",
+    "url": "https://producerspark.com"
+  },
+  "homepage": "https://producerspark.com",
+  "repository": "https://github.com/NoMiddleInc/somanylemons-mcp",
+  "license": "MIT",
+  "keywords": [
+    "prospects",
+    "sales",
+    "research",
+    "contacts",
+    "conferences"
+  ],
+  "icon": "./assets/icon.svg",
+  "documentationUrl": "https://github.com/NoMiddleInc/somanylemons-mcp/tree/codex/spark-live-prospecting-20261006/plugins/producerspark",
+  "supportUrl": "https://github.com/NoMiddleInc/somanylemons-mcp/issues",
+  "privacyPolicyUrl": "https://producerspark.com/privacy-policy",
+  "termsOfServiceUrl": "https://producerspark.com/terms"
+}
