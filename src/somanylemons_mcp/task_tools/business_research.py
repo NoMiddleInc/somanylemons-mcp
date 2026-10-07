@@ -4,7 +4,7 @@ from collections import Counter
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 BusinessField = Literal[
     "name", "company", "title", "role", "email", "linkedin", "reason", "email_status",
@@ -44,6 +44,18 @@ class BusinessEvent(BaseModel):
     end_date: Annotated[str, Field(max_length=10)] | None = None
 
 
+class BusinessEmployeeRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min: Annotated[int, Field(strict=True, ge=1, le=10000000)]
+    max: Annotated[int, Field(strict=True, ge=1, le=10000000)]
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.min > self.max:
+            raise ValueError("Employee minimum must not exceed maximum.")
+        return self
+
+
 class BusinessResearchSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["company_contacts", "conference_speakers"]
@@ -53,6 +65,8 @@ class BusinessResearchSpec(BaseModel):
     # Caller geography is preserved exactly. US-first assumptions belong in new-request
     # client instructions, not transport defaults; explicit global and conference scope win.
     person_locations: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
+    industries: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
+    employee_range: BusinessEmployeeRange | None = None
     per_company_count: Annotated[int, Field(ge=1, le=50)] | None = None
     event: BusinessEvent | None = None
     fields: Annotated[list[BusinessField], Field(min_length=1, max_length=40)] | None = None
