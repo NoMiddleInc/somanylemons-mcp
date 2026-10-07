@@ -350,6 +350,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Use list_tasks to navigate obligations, not to answer final research or delivery readiness. For a conference row with current_answer_goal_id, read get_research_answer for that exact goal. Listed original-goal worker progress and its review blocker are not the latest outcome's counts or all required delivery gates. Artifact row_count describes rows in that exact saved file. A canonical raw speaker/session-appearance count can differ from a customer presentation's combined roster rows; never transfer one file's count to another. Email-cell counts likewise differ from roster identity keys and distinct recorded addresses. For missing emails, use enrichment_summary.missing_email_people and missing_email_enrichment_status_counts_by_person. Global unfinished people can include people with a recorded email; use unfinished_with_recorded_email_people and unfinished_without_recorded_email_people instead of adding all global blockers to the missing-email causes. Completed enrichment without a selected address does not prove any particular provider returned empty results or that an address is genuinely unavailable. Identity unresolved does not mean unresolvable, structurally unavailable, or impossible to improve with further evidence. Use recorded_email_date_summary's separate clocks when present. A saved verified email status is not a fresh deliverability check and does not establish a recorded verification date. Missing verification/enrichment clocks stay unknown; never infer a person's review or verification date from their email observation date. Never assign a date to all saved_result_reused or completed people from an example, one source, a common timestamp, or a status label. Paginated exact/calendar groups retain their explicit omitted totals; a preview is not the entire cohort. Status counts describe a cumulative saved snapshot, not new provider calls, new sources opened, or actions performed by the current goal. A saved succeeded stage does not prove completion happened after the user's Claude session ended or support an elapsed-time calculation without the relevant recorded timestamps. conference_answer.sources describes captured organizer/program source evidence. Separately report recorded email-source observations from row provenance and public-source receipts; do not claim the organizer is the only observed source in the entire workflow while public email-source evidence is also recorded. Declared source_urls alone remain unobserved targets. Preserve the distinction between observed source access and independently proven full roster/session coverage. preliminary_review_artifact refers to the separate interim-snapshot capability. Its null value does not mean there is no saved workbook available for HERE-first inspection. A recorded canonical_review_artifact availability fact with matched scope/hash/validation can establish a validated review file; otherwise a top-level listed artifact only establishes retrieval availability. Offer or retrieve an authorized clearly labeled partial workbook here, state its actual gaps, and keep final fulfillment and sends held. A do-not-send instruction does not prohibit already-requested saved-file inspection or download here. Do not ask for additional permission to read or link the scoped saved file the user requested for review; this retrieval never authorizes email or clears send gates. Do not label an immutable saved artifact a live working document or say clearing internal review alone completes the research.  A positive current_answer_goal_id is backend-proven scoped navigation, including pending continuations without a new artifact. If answer_is_current_recorded_goal is false, follow that ID for current progress unless the user explicitly asks for the historical snapshot. saved_review_workbook.metadata_recorded establishes saved metadata and a scoped retrieval action, not verified bytes or final delivery; use its artifact_retrieval to inspect the authorized partial file here. Each email clock summary is complete for that distinct clock; missing-email status and unfinished-email-presence are separate partitions, not additive cohorts. "
             "For conference cardinality, follow enrichment_summary.identity_count_basis: unique_people and per-person totals can count saved name/company roster keys containing aliases, not independently resolved distinct individuals. Label that basis as roster entries or roster identity keys. Distinguish email-bearing roster keys, speaker/session email cells and distinct_recorded_email_addresses; use recorded_email_address_count_basis and the shared-address group counts when present. Newly filled roster keys need not add the same number of distinct addresses. Never infer identities or fresh deliverability from a shared address, or delete or merge alias rows. Preserve recorded rows, counts, clocks and every research/delivery gate. "
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link. "
+            "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
+            "Present the returned message directly, preserving its short paragraphs and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Give the requested result first; omit sample contact tables, internal steps and repeated caveats unless asked. "
             "For an ICP definition or targeting criteria use get_my_icp. For an ICP LIST, main list, golden list, prospect list or download my list use get_prospect_list. Discover all accessible lists with list_golden_lists and read every saved contact with read_golden_list. "
             "Return download_url as a clickable Markdown link with filename. Links expire after ten minutes; request a new link when expired. "
@@ -386,6 +388,56 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "An email_status of public_source_unverified means an address was published on the recorded official source, not verified deliverable. Report email_source_url/email_observed_at separately from saved provider enrichment and its earlier verification status; never treat the public observation date as a verification date. An unfinished overall request can contain completed saved enrichment and verification for individual contacts; report those dates/statuses without claiming the full request is finished."
         ),
     )
+
+    @server.tool(annotations=READ)
+    async def get_email_agent_status(
+        config_id: PositiveId | None = None,
+        campaign_id: PositiveId | None = None,
+    ) -> dict:
+        """Read current Email Agent on/off, enrolled, sent, queued, sending, uncertain, failed, skipped and replied counts. Uses the same saved facts and status paragraph as email replies. Select campaign_id from list_golden_lists when needed. Never sends email."""
+        return await api.request(
+            "GET",
+            "/api/v1/agent-tasks/email-agent/status",
+            params={
+                key: value
+                for key, value in {
+                    "config_id": config_id,
+                    "campaign_id": campaign_id,
+                }.items()
+                if value is not None
+            },
+        )
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        )
+    )
+    async def ask_email_agent(
+        question: Annotated[str, Field(min_length=1, max_length=2000)],
+        config_id: PositiveId | None = None,
+        campaign_id: PositiveId | None = None,
+    ) -> dict:
+        """Ask a read-only question about your list or Email Agent. The backend answers with the email agent's same model, facts and concise email reply style. Preserve the returned message and paragraph breaks. No email, list changes or research jobs are triggered. Uses saved facts, not a previous email thread; include names for follow-up questions."""
+        return await api.request(
+            "POST",
+            "/api/v1/agent-tasks/email-agent/ask",
+            body={
+                "question": question,
+                **{
+                    key: value
+                    for key, value in {
+                        "config_id": config_id,
+                        "campaign_id": campaign_id,
+                    }.items()
+                    if value is not None
+                },
+            },
+            timeout_seconds=150.0,
+        )
 
     @server.tool(annotations=READ)
     async def list_tasks(

@@ -15,7 +15,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('source_urls',task['conference_answer']['event'])
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
-  self.assertEqual(len(tools),25)
+  self.assertEqual(len(tools),27)
   self.assertIn("watch_research",tools)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
@@ -497,23 +497,91 @@ class InitializeInstructionsTests(unittest.TestCase):
   self.assertNotIn('schema.invalid',instructions)
 
 class DownloadOriginTests(unittest.IsolatedAsyncioTestCase):
- async def test_download_capability_uses_public_site_without_changing_token(self):
-  token = "signed-token:timestamp:signature"
-  def handler(request):
-   return httpx.Response(200,json={"data":{"download_url":"https://api.producerspark.com/api/v1/agent-tasks/download/"+token,"filename":"prospects.xlsx"}})
-  client = TaskApiClient(TaskApiConfig("https://api.producerspark.com","test-key"),transport=httpx.MockTransport(handler))
-  result = await client.request("GET","/api/v1/agent-tasks/34/artifacts/7/download-link")
-  self.assertEqual(result["download_url"],"https://producerspark.com/api/v1/agent-tasks/download/"+token)
-  self.assertEqual(result["filename"],"prospects.xlsx")
+    async def test_download_capability_uses_public_site_without_changing_token(self):
+        token = "signed-token:timestamp:signature"
+        def handler(request):
+            return httpx.Response(200,json={"data":{"download_url":"https://api.producerspark.com/api/v1/agent-tasks/download/"+token,"filename":"prospects.xlsx"}})
+        client = TaskApiClient(TaskApiConfig("https://api.producerspark.com","test-key"),transport=httpx.MockTransport(handler))
+        result = await client.request("GET","/api/v1/agent-tasks/34/artifacts/7/download-link")
+        self.assertEqual(result["download_url"],"https://producerspark.com/api/v1/agent-tasks/download/"+token)
+        self.assertEqual(result["filename"],"prospects.xlsx")
 
- async def test_main_list_tools_use_canonical_routes_and_list_ids(self):
-  calls=[]
-  def handler(request):
-   calls.append(request)
-   return httpx.Response(200,json={'data':{'source':'main golden list','campaign_id':44}})
-  transport=httpx.MockTransport(handler)
-  for name,args in [('list_golden_lists',{}),('read_golden_list',{'campaign_id':44,'include_rows':False}),('get_prospect_list',{'campaign_id':44}),('get_my_icp',{'campaign_id':44})]:
-   await invoke_task(name,args,api_url='https://example.com',api_key='owner',transport=transport)
-  self.assertEqual([r.url.path for r in calls],['/api/v1/agent-tasks/golden-lists','/api/v1/agent-tasks/golden-lists/read','/api/v1/agent-tasks/prospect-list','/api/v1/agent-tasks/icp'])
-  self.assertEqual(calls[-1].url.params['campaign_id'],'44')
-  self.assertEqual(calls[1].url.params['include_rows'],'false')
+    async def test_main_list_tools_use_canonical_routes_and_list_ids(self):
+        calls=[]
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200,json={'data':{'source':'main golden list','campaign_id':44}})
+        transport=httpx.MockTransport(handler)
+        for name,args in [('list_golden_lists',{}),('read_golden_list',{'campaign_id':44,'include_rows':False}),('get_prospect_list',{'campaign_id':44}),('get_my_icp',{'campaign_id':44})]:
+            await invoke_task(name,args,api_url='https://example.com',api_key='owner',transport=transport)
+        self.assertEqual([r.url.path for r in calls],['/api/v1/agent-tasks/golden-lists','/api/v1/agent-tasks/golden-lists/read','/api/v1/agent-tasks/prospect-list','/api/v1/agent-tasks/icp'])
+        self.assertEqual(calls[-1].url.params['campaign_id'],'44')
+        self.assertEqual(calls[1].url.params['include_rows'],'false')
+
+
+class EmailAgentBridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_status_and_question_forward_scope_and_preserve_email_reply(self):
+        calls = []
+        message = (
+            "Jessica has one recorded sent email.\n\nHer follow-up is still sending."
+        )
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(
+                200, json={"data": {"message": message, "read_only": True}}
+            )
+
+        for name, arguments in (
+            ("get_email_agent_status", {"campaign_id": 44}),
+            (
+                "ask_email_agent",
+                {"question": "Has Jessica been emailed?", "campaign_id": 44},
+            ),
+        ):
+            result = await invoke_task(
+                name,
+                arguments,
+                api_url="https://example.com",
+                api_key="owner",
+                transport=httpx.MockTransport(handler),
+            )
+            content = result[0] if isinstance(result, tuple) else result
+            self.assertEqual(json.loads(content[0].text)["message"], message)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0].method, "GET")
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/email-agent/status")
+        self.assertEqual(dict(calls[0].url.params), {"campaign_id": "44"})
+        self.assertEqual(calls[1].method, "POST")
+        self.assertEqual(calls[1].url.path, "/api/v1/agent-tasks/email-agent/ask")
+        self.assertEqual(
+            json.loads(calls[1].content),
+            {"question": "Has Jessica been emailed?", "campaign_id": 44},
+        )
+        self.assertTrue(
+            all(request.headers["x-api-key"] == "owner" for request in calls)
+        )
+
+    async def test_question_validation_rejects_invalid_input_before_http(self):
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": {}})
+
+        for arguments in (
+            {"question": ""},
+            {"question": "x" * 2001},
+            {"question": "Status?", "campaign_id": 0},
+        ):
+            from mcp.server.fastmcp.exceptions import ToolError
+
+            with self.assertRaisesRegex(ToolError, "validation error"):
+                await invoke_task(
+                    "ask_email_agent",
+                    arguments,
+                    api_url="https://example.com",
+                    api_key="owner",
+                    transport=httpx.MockTransport(handler),
+                )
+        self.assertEqual(calls, [])

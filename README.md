@@ -175,3 +175,18 @@ The task transport is vendored from backend commit `5bb0a30e` to keep the hosted
 Use `/producerspark` after running the installer, or the ProducerSpark skill in the plugin. Ask, for example: “Find 50 manufacturing CFOs in Chicago and keep me updated.” The workflow creates one durable backend task and calls `watch_research` with a cursor to show actual saved counts, email coverage, stages and source-backed findings as they change. Research continues if the conversation closes; reconnect to the same task to resume updates.
 
 On completion, it offers to plan an email campaign. This research-only connection cannot enroll or send prospects. Active monitoring uses bounded reads; unsolicited push into idle Claude sessions is not included. See [experience design](docs/live-prospect-experience.md) for behavior and rollout details. The updated hosted MCP must be deployed before the new tool is available to hosted clients.
+
+## Email Agent status and answers
+
+For outreach status, use `get_email_agent_status` with the selected `campaign_id`
+from `list_golden_lists` when needed. For a question about the saved list or email
+activity, use `ask_email_agent` with the user's question. Present the returned
+`message` directly and preserve paragraph breaks: the backend uses the email
+agent's reply prompt, model and saved facts. Keep sent, queued, sending, uncertain,
+failed, skipped and replied counts distinct. Sent means provider send success,
+not inbox receipt or an open. These tools do not send emails, change lists or
+start research. They have no previous email-thread context; name the subject of
+a follow-up or preserve the returned clarification. Status is a current read,
+not unsolicited push while the client is idle.
+
+Backend endpoints must be deployed before the hosted MCP tools become usable.
