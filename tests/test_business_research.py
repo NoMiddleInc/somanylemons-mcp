@@ -109,6 +109,34 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue({"session_date", "session_time", "room", "email_status", "field_provenance",
                          "organizer_company", "requested_company_identity_hints", "city", "state"}.issubset(fields["items"]["enum"]))
         self.assertIn("identity_hints", schema["$defs"]["BusinessCompany"]["properties"])
+        self.assertIn("person_locations", spec["properties"])
+        self.assertIn("per_company_count", spec["properties"])
+        self.assertIn("person's location, never company headquarters", tool.description)
+        self.assertIn("omit spec", tool.description)
+        self.assertIn("namesake", tool.description)
+        self.assertNotIn("Perplexity", tool.description)
+
+    async def test_off_list_variety_preserves_location_identity_and_each_company_scope(self):
+        calls = []
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"data": {"id": 71, "state": "queued"}})
+        specs = [
+            {"kind": "company_contacts", "companies": [], "roles": ["GTM engineer"], "person_locations": ["Chicago"], "count": 5},
+            {"kind": "company_contacts", "companies": [], "person_name": "Satya Nadella", "count": 1},
+            {"kind": "company_contacts", "companies": [{"name": "Costco", "domain": "costco.com"}], "roles": ["CFO"], "count": 1},
+            {"kind": "company_contacts", "companies": [{"name": f"Company {number}"} for number in range(10)], "roles": ["CEO", "co-CEO"], "per_company_count": 1, "count": 10},
+            {"kind": "company_contacts", "companies": [], "roles": ["CFO"], "person_locations": ["New York City"], "count": 3},
+        ]
+        for spec in specs:
+            await invoke_task("create_business_research_request", {
+                "request": "Research exactly the supplied individual and company criteria outside saved lists.",
+                "spec": spec, "idempotency_key": "22222222-2222-4222-8222-222222222222",
+            }, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+            self.assertEqual(calls[-1]["spec"], spec)
+            self.assertNotIn("campaign_id", calls[-1])
+        self.assertEqual(len(calls), 5)
+
 
     async def test_dell_cio_and_first15_conference_payloads_use_generic_scoped_endpoint(self):
         calls = []
@@ -139,7 +167,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("budget", body)
         self.assertEqual(len(calls), 2)
 
-    async def test_deep_research_is_the_only_explicit_perplexity_eligible_mode(self):
+    async def test_deep_research_preserves_explicit_customer_depth_without_retired_provider_claims(self):
         calls = []
 
         def handler(request):
