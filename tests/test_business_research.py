@@ -115,6 +115,13 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("omit spec", tool.description)
         self.assertIn("namesake", tool.description)
         self.assertNotIn("Perplexity", tool.description)
+        for instruction in ("people outside golden lists are allowed", "assume United States first",
+                            "disclose that assumption", 'person_locations=["United States"]',
+                            "Explicit city/country overrides", "explicit worldwide/global means global",
+                            "Never infer actual personal geography", "Preserve conference edition coverage",
+                            "Do not change saved goals"):
+            self.assertIn(instruction, tool.description)
+        self.assertIsNone(spec["properties"]["person_locations"]["default"])
 
     async def test_off_list_variety_preserves_location_identity_and_each_company_scope(self):
         calls = []
@@ -137,6 +144,33 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("campaign_id", calls[-1])
         self.assertEqual(len(calls), 5)
 
+
+    async def test_new_request_geography_preserves_explicit_and_global_and_event_scope(self):
+        calls = []
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"data": {"id": 71, "state": "queued"}})
+        cases = [
+            ("US first assumed because personal geography was omitted; find five CFOs.",
+             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["United States"], "count": 5}),
+            ("Find five CFOs in Chicago.",
+             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["Chicago"], "count": 5}),
+            ("Find five CFOs in Canada.",
+             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["Canada"], "count": 5}),
+            ("Find five CFOs worldwide, with no personal geography restriction.",
+             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": [], "count": 5}),
+            ("All published speakers at the supplied 2026 conference edition, globally.",
+             {"kind": "conference_speakers", "event": {"name": "Global Congress", "year": 2026,
+              "source_urls": ["https://publisher.example.com/speakers"]}, "all": True}),
+        ]
+        for question, spec in cases:
+            await invoke_task("create_business_research_request", {
+                "request": question, "spec": spec,
+                "idempotency_key": "22222222-2222-4222-8222-222222222222",
+            }, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+            self.assertEqual(calls[-1]["request"], question)
+            self.assertEqual(calls[-1]["spec"], spec)
+        self.assertEqual(len(calls), 5)
 
     async def test_dell_cio_and_first15_conference_payloads_use_generic_scoped_endpoint(self):
         calls = []
