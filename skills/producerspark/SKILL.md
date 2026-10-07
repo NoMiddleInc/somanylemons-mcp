@@ -36,7 +36,7 @@ If the user leaves or changes topics, the backend job continues. Restore it thro
 
 ## Work through missing sources with the user
 
-Research uses Apollo records and official publisher pages. Do not recommend fixing or reconnecting Perplexity, or claim that an external search provider is available. A supplied page or Apollo URL is a candidate; only opened publisher evidence can establish facts. Preserve recorded source, email, and verification limitations.
+Research uses Apollo records and opened public sources. Account-enabled OpenAI web searches can resolve individual identities and corporate officers; search summaries propose URLs and do not establish facts. A supplied page or Apollo URL is a candidate; only opened publisher evidence can establish facts. Preserve recorded source, email, and verification limitations.
 
 For a conference, pin its name, edition year, dates and official agenda/roster URL. Never use a previous edition's page as current-edition proof. If the user asks for the next conference, use available saved event metadata and, when available, Claude's own web search to locate an official organizer page. Verify current dates from that page before submitting the spec. Search snippets are leads, not attendance or roster evidence. Do not invent event dates or rewrite a URL's year. If no discovery capability is available, ask for the organizer link or offer specific saved event choices with their date uncertainty stated.
 
