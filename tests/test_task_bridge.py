@@ -46,6 +46,19 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(body['research_depth'],'standard')
   self.assertNotIn('config_id',body)
   self.assertIn('queued',str(result))
+ async def test_hundred_agencies_use_shared_backend_count_and_depth(self):
+  calls=[]
+  def handler(request):
+   calls.append(request)
+   return httpx.Response(200,json={'data':{'id':100,'state':'queued'}})
+  agencies=['Synthetic Agency '+str(i) for i in range(100)]
+  await invoke_task('create_research_request',{'agencies':agencies,'campaign_id':51,'count':25,'research_depth':'deep','idempotency_key':'22222222-2222-4222-8222-222222222222'},api_url='https://example.com',api_key='owner',transport=httpx.MockTransport(handler))
+  self.assertEqual(len(calls),1)
+  body=json.loads(calls[0].content)
+  self.assertEqual(body['agencies'],agencies)
+  self.assertEqual(body['count'],25)
+  self.assertEqual(body['campaign_id'],51)
+  self.assertEqual(body['research_depth'],'deep')
  async def test_artifact_resource_uses_same_owner_and_rejects_injection(self):
   calls=[]
   def handler(request):

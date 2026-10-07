@@ -24,7 +24,7 @@ from .business_research import BusinessResearchSpec, saved_business_answer
 from .live_progress import live_update
 
 PositiveId = Annotated[int, Field(gt=0)]
-ContactCount = Annotated[int, Field(ge=1, le=10)]
+ContactCount = Annotated[int, Field(ge=1, le=5000)]
 AgencyName = Annotated[str, Field(min_length=1, max_length=200)]
 
 
@@ -35,7 +35,7 @@ class AgencyIdentity(BaseModel):
 
 
 AgencyInput = AgencyName | AgencyIdentity
-Agencies = Annotated[list[AgencyInput], Field(min_length=1, max_length=20)]
+Agencies = Annotated[list[AgencyInput], Field(min_length=1, max_length=200)]
 Reason = Annotated[str, Field(min_length=1, max_length=1000)]
 TaskView = Literal[
     "", "needs_attention", "in_progress", "scheduled", "waiting_customer", "completed"
@@ -533,7 +533,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         count: ContactCount | None = None,
         research_depth: Literal["standard", "deep"] = "standard",
     ) -> dict:
-        """Create the saved-criteria agency workflow (1–10 contacts) with the account's enabled agent and budget. Research uses Apollo and opened public sources. Set research_depth=deep only when the customer explicitly requests deep research; that mode permits broader public-source checks. For broader business/industry/role research or conference questions, use create_business_research_request. Discover agents with list_tasks. Pass campaign_id from list_golden_lists for a selected customer-owned saved list without changing the default agent. Shared read access does not authorize research for another owner. Delivery follows backend policy."""
+        """Create the saved-criteria agency workflow (up to 200 agencies and 5,000 contacts per agency, subject to account budget) with the account's enabled agent and budget. Research uses Apollo and opened public sources. Set research_depth=deep only when the customer explicitly requests deep research; that mode permits broader public-source checks. For broader business/industry/role research or conference questions, use create_business_research_request. Discover agents with list_tasks. Pass campaign_id from list_golden_lists for a selected customer-owned saved list without changing the default agent. Shared read access does not authorize research for another owner. Delivery follows backend policy."""
         body = {
             "agencies": agency_payload(agencies),
             "idempotency_key": str(idempotency_key),
