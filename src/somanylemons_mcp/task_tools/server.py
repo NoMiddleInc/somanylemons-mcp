@@ -206,6 +206,9 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     business = saved_business_answer(task, result, contact_page=contact_page, source_page=source_page)
     if business is not None:
         business["blocker"] = public_blocker(task.get("blocker"))
+        if (business["blocker"] or {}).get("code") == "business_conference_human_review_required":
+            business["manual_review_required"] = True
+            business["next_action"] = "awaiting_human_review"
         return bounded_examples_and_artifacts(business)
     answer = task.get("research_answer")
     result["research_answer"] = dict(answer) if isinstance(answer, dict) else None
@@ -291,6 +294,9 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
     result["saved_enrichment_status_counts"] = dict(Counter(str(row.get("enrichment_status") or "not_recorded") for row in contacts.values()))
     result["pagination"] = {"agency_page": agency_page, "agency_page_size": 5, "agencies_total": len(agencies), "contact_page": contact_page, "contact_page_size": 5, "contacts_total": len(contacts), "email_gap_preview_limit": 5, "source_page": source_page, "source_page_size": 3}
     result["blocker"] = public_blocker(task.get("blocker"))
+    if (result["blocker"] or {}).get("code") == "business_conference_human_review_required":
+        result["manual_review_required"] = True
+        result["next_action"] = "awaiting_human_review"
     if task.get("state") == "waiting_customer":
         result["customer_next_step"] = "Provide the agency names and their website domains when identity clarification is needed. The saved request will continue once the requested input is supplied."
     feedback = feedback_projection(task, contact_page=contact_page)

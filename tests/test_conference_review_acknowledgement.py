@@ -23,3 +23,12 @@ class ConferenceReviewAcknowledgementTests(unittest.TestCase):
         self.assertIn('Our team is on it.', result['summary'])
         self.assertEqual(result['blocker']['code'], 'business_conference_human_review_required')
         self.assertFalse(any('reuse this research task' in text for text in result['suggestions']))
+
+    def test_compact_saved_answer_explicitly_requires_operator_review(self):
+        from somanylemons_mcp.task_tools.server import compact_research_answer
+        result = compact_research_answer({'id': 104, 'state': 'needs_attention',
+            'contract': {'workflow': 'business_research'},
+            'blocker': {'party': 'operator', 'reason': 'business_conference_human_review_required'}})
+        self.assertTrue(result['manual_review_required'])
+        self.assertEqual(result['next_action'], 'awaiting_human_review')
+        self.assertEqual(result['blocker']['code'], 'business_conference_human_review_required')
