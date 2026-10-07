@@ -151,7 +151,7 @@ RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 server = Server(
     "ProducerSpark",
     website_url="https://producerspark.com",
-    icons=[Icon(src="https://producerspark.com/brand/producerspark-icon-v2.svg", mimeType="image/svg+xml")],
+    icons=[Icon(src="https://producerspark.com/images/agents/prospect-custodian-v2.png", mimeType="image/png")],
     instructions=(
         RESEARCH_INSTRUCTIONS + "\n\n"
         "Use the content tools according to their schemas and descriptions. Hosted file uploads requiring local filesystem access remain unavailable; no research task authorizes content publishing or outreach. "
