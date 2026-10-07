@@ -88,6 +88,15 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tool.annotations.readOnlyHint)
         schema = tool.inputSchema
         self.assertEqual(set(schema["required"]), {"request", "idempotency_key"})
+        self.assertEqual(
+            schema["properties"]["research_depth"],
+            {
+                "default": "standard",
+                "enum": ["standard", "deep"],
+                "title": "Research Depth",
+                "type": "string",
+            },
+        )
         spec = schema["$defs"]["BusinessResearchSpec"]
         self.assertFalse(spec["additionalProperties"])
         self.assertIn("person_name", spec["properties"])
@@ -124,10 +133,34 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             body = json.loads(calls[-1].content)
             self.assertEqual(body["spec"], spec)
             self.assertEqual(body["config_id"], 6)
+            self.assertEqual(body["research_depth"], "standard")
             self.assertEqual(calls[-1].url.path, "/api/v1/agent-tasks/business-research")
             self.assertEqual(calls[-1].headers["x-api-key"], "customer")
             self.assertNotIn("budget", body)
         self.assertEqual(len(calls), 2)
+
+    async def test_deep_research_is_the_only_explicit_perplexity_eligible_mode(self):
+        calls = []
+
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={"data": {"id": 73, "state": "queued", "contract": {"workflow": "business_research"}}},
+            )
+
+        await invoke_task(
+            "create_business_research_request",
+            {
+                "request": "Deep research the supplied company contacts.",
+                "research_depth": "deep",
+                "idempotency_key": "22222222-2222-4222-8222-222222222222",
+            },
+            api_url="https://example.com",
+            api_key="customer",
+            transport=httpx.MockTransport(handler),
+        )
+        self.assertEqual(calls[0]["research_depth"], "deep")
 
     def test_identity_clues_and_field_order_are_bounded_typed_literal_json(self):
         literal = {"source_row": 7, "clues": ["Chicago", None, True], "nested": {"state": "literal clue"}}
@@ -148,7 +181,8 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         arguments = {"request": "Find the CIO at Dell", "idempotency_key": "22222222-2222-4222-8222-222222222222"}
         for _ in range(2):
             await invoke_task("create_business_research_request", arguments, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
-        self.assertEqual(calls, [arguments, arguments])
+        expected = {**arguments, "research_depth": "standard"}
+        self.assertEqual(calls, [expected, expected])
 
     def test_current_generic_evidence_projects_saved_rows_without_inventing_fulfillment(self):
         task = {
