@@ -319,13 +319,15 @@ class NavigationToolTests(unittest.IsolatedAsyncioTestCase):
         self,
     ):
         from somanylemons_mcp import server as hosted
-        from somanylemons_mcp.task_bridge import task_schemas
+        from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES, task_schemas
 
-        self.assertEqual(len(await task_schemas()), 25)
+        tools = await task_schemas()
+        self.assertEqual({tool.name for tool in tools}, TASK_TOOL_NAMES)
+        self.assertEqual(len(tools), 27)
         with patch.object(
             hosted, "_request_identity", return_value={"research_only": False}
         ):
-            self.assertEqual(len(await hosted.list_tools()), 54)
+            self.assertEqual(len(await hosted.list_tools()), 56)
         self.assertIn("current_answer_goal_id", hosted.server.instructions)
         self.assertIn(
             "missing_email_enrichment_status_counts_by_person",
