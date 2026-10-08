@@ -93,7 +93,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(tool.annotations.idempotentHint)
         self.assertFalse(tool.annotations.readOnlyHint)
         schema = tool.inputSchema
-        self.assertEqual(set(schema["required"]), {"request", "idempotency_key", "spec"})
+        self.assertEqual(set(schema["required"]), {"request", "idempotency_key"})
         self.assertEqual(
             schema["properties"]["research_depth"],
             {
@@ -117,16 +117,12 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("identity_hints", schema["$defs"]["BusinessCompany"]["properties"])
         self.assertIn("person_locations", spec["properties"])
         self.assertIn("per_company_count", spec["properties"])
-        self.assertIn("person's location, never company headquarters", tool.description)
-        self.assertIn("company_scope=candidate_pool", tool.description)
         self.assertIn("company_scope", spec["properties"])
-        self.assertIn("namesake", tool.description)
+        self.assertIn("same background interpretation as email", tool.description)
+        self.assertIn("original customer request verbatim", tool.description)
+        self.assertIn("never overrides the original question", tool.description)
+        self.assertIn("never company headquarters as personal residence", tool.description)
         self.assertNotIn("Perplexity", tool.description)
-        for instruction in ("people outside golden lists are allowed", "leave person_locations empty",
-                            "no inferred country restriction", "Preserve explicit personal city/country constraints",
-                            "Explicit worldwide/global leaves person_locations empty",
-                            "Preserve conference edition coverage", "Do not change saved goals"):
-            self.assertIn(instruction, tool.description)
         self.assertIsNone(spec["properties"]["person_locations"]["default"])
 
     async def test_named_speakers_use_individual_enrichment_with_conference_context(self):
@@ -275,17 +271,21 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         expected = {**arguments, "research_depth": "standard", "intake_channel": "mcp_v1"}
         self.assertEqual(calls, [expected, expected])
 
-    async def test_request_only_cannot_bypass_mcp_v1_named_scope(self):
+    async def test_request_only_uses_shared_background_interpretation(self):
         calls = []
         def handler(request):
-            calls.append(request)
-            return httpx.Response(200, json={"data": {}})
-        with self.assertRaises(ToolError):
-            await invoke_task("create_business_research_request", {
-                "request": "10 CEOs of B2B marketing agencies in Chicago",
-                "idempotency_key": "22222222-2222-4222-8222-222222222222",
-            }, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
-        self.assertEqual(calls, [])
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"data": {"id": 74, "state": "queued",
+                "acknowledgment": "We're working on it.",
+                "interpretation_version": "shared-business-interpretation-v1"}})
+        arguments = {"request": "10 CEOs of B2B marketing agencies in Chicago",
+                     "idempotency_key": "22222222-2222-4222-8222-222222222222"}
+        result = await invoke_task("create_business_research_request", arguments,
+            api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+        self.assertEqual(calls, [{**arguments, "research_depth": "standard", "intake_channel": "mcp_v1"}])
+        result = json.loads(result[0].text)
+        self.assertEqual(result["acknowledgment"], "We're working on it.")
+        self.assertEqual(result["interpretation_version"], "shared-business-interpretation-v1")
 
     async def test_backend_named_scope_rejection_is_reported_without_fallback_search(self):
         calls = []

@@ -191,6 +191,8 @@ not unsolicited push while the client is idle.
 
 Backend endpoints must be deployed before the hosted MCP tools become usable.
 
-### MCP v1 target discovery
+### Shared email and MCP interpretation
 
-New business-contact requests require a structured `spec` containing named companies or an individual `person_name`. For a category such as “10 CEOs of B2B marketing agencies in Chicago,” Claude first uses its own search tools to find and verify matching company names and domains, preserving all criteria and source evidence in `identity_hints`, then submits those companies and requested roles/count. Company geography must not become personal geography. Missing host search access or evidence must be stated explicitly; do not invent targets or submit a broader role-and-city substitute. The connector marks intake as `mcp_v1`; the backend enforces this boundary for new connector work. Inbox and other backend discovery workflows retain broader search support. Existing conference and saved-result tools remain available.
+New business research sends the original request verbatim plus a UUID to `create_business_research_request`; `spec` is optional. The same backend background planner interprets email, Claude and Codex requests. Clients do not preselect companies or construct title, geography, count, industry or size criteria. Older structured specs remain validated audit hints and cannot override the original request. Literal uploaded seed files retain their provenance. The backend owns title equivalence, candidate discovery, qualification, retries, validated artifacts and authorized customer delivery. MCP carries the recorded acknowledgment and reads the same durable goal after the connection closes. Reuse exact inputs and UUID after uncertain responses. Existing named-person, conference-review and tenant protections remain in force.
+
+Backend, task-worker and hosted MCP releases must match before claiming production parity. Local interpretation tests do not certify live prospect research or email delivery.
