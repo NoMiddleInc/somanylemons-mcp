@@ -122,11 +122,10 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("company_scope", spec["properties"])
         self.assertIn("namesake", tool.description)
         self.assertNotIn("Perplexity", tool.description)
-        for instruction in ("people outside golden lists are allowed", "assume United States first",
-                            "disclose that assumption", 'person_locations=["United States"]',
-                            "Explicit city/country overrides", "explicit worldwide/global means global",
-                            "Never infer actual personal geography", "Preserve conference edition coverage",
-                            "Do not change saved goals"):
+        for instruction in ("people outside golden lists are allowed", "leave person_locations empty",
+                            "no inferred country restriction", "Preserve explicit personal city/country constraints",
+                            "Explicit worldwide/global leaves person_locations empty",
+                            "Preserve conference edition coverage", "Do not change saved goals"):
             self.assertIn(instruction, tool.description)
         self.assertIsNone(spec["properties"]["person_locations"]["default"])
 
