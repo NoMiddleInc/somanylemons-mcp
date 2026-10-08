@@ -70,3 +70,7 @@ not unsolicited push while the client is idle.
 For companies/startups/agencies in a place, set employer_locations to that employer geography. person_locations is personal residence; do not infer residence from company headquarters.
 
 For an explicitly requested provider comparison, set contact_provider="treg" to use TREG for contact search and email lookup, with Apollo excluded. Omit contact_provider for the default Apollo path. Use a fresh UUID for each comparison arm; never change providers on an existing request UUID. Provider selection does not change the requested criteria or completion checks.
+
+For mid-size employers with no numeric size, use employee_range={"min":50,"max":500}. Preserve explicit numeric bounds. Account executives at a named vendor selling enterprise software use roles=["account executive"] and industries=["enterprise software"]; retain the named vendor. Official employer product evidence establishes the category, not individual account assignments.
+
+When employer_locations is supplied and no personal geography is requested, leave person_locations empty. Keep watching the existing request through waiting_dependency, waiting_budget and retry_wait. These continuing states are not human review and partial coverage is not a completed answer.
