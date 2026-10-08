@@ -14,6 +14,15 @@ from tests.test_research_progress import VirtualClock
 
 
 class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def test_partial_current_goal_does_not_authorize_a_completed_contact_table(self):
+        answer = {'id': 230, 'state': 'waiting_provider', 'fulfillment': 'unknown',
+                  'business_answer': {'counts': {'contacts': 1, 'requested': 5}}}
+        update = live_update(answer, 230)
+        self.assertTrue(update['continue_watching'])
+        self.assertFalse(update['final_response_ready'])
+        self.assertIn('Never combine old partial', update['contact_table_policy'])
+        self.assertIn('until final_response_ready', update['completion_instruction'])
+
     def test_saved_contacts_visible_when_export_fails_or_research_continues(self):
         rows = [{"name": "Saved Person", "email": "saved@example.com", "email_status": "guessed"}]
         for state in ("running", "needs_attention", "completed"):

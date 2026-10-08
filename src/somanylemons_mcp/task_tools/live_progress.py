@@ -115,6 +115,8 @@ def live_update(answer, requested_goal_id):
         summary, suggestions, stop = business["answer_text"], [], True
     return {
         **facts, "cursor": cursor, "summary": summary,
+        "final_response_ready": bool(finished or contact_ready),
+        "contact_table_policy": "Return the requested full contact table only from this current goal after final_response_ready. Never combine old partial, rejected or ineligible rows from other goals to fill the requested count.",
         "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
         "observed_at": answer.get("updated_at"),
@@ -122,7 +124,7 @@ def live_update(answer, requested_goal_id):
         "findings_scope": "Up to three saved preview contacts and sources; not newly discovered contacts or a complete cohort.",
         "campaign_action": "suggest_only",
         "completion_instruction": (
-            "Continue watching in this response; a poll timeout is not a final answer. Do not ask the customer to check again."
+            "Continue watching in this response until final_response_ready; a poll timeout or unchanged cursor is not a final answer. Do not ask the customer to check again, present a partial table as fulfillment, or combine contacts from historical goals to fill the count."
             if not stop else
             "Read get_research_answer(details=true) with all contact pages or read_task_spreadsheet and return the full requested contact table."
             if finished else "Explain the actual saved outcome without inventing missing data."
