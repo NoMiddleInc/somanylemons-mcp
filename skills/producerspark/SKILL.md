@@ -3,7 +3,7 @@ name: producerspark
 description: Research business contacts and conference speakers across industries through a connected ProducerSpark account, and retrieve existing tasks and workbooks.
 ---
 
-Keep replies concise: normally no more than 75 words plus the requested download link. During live prospect discovery, include useful saved findings and progress as described below. For ordinary downloads, omit sample rows and operational detail unless asked.
+Default to Markdown tables only, with no opening sentence, closing commentary, bullet lists or background-process narration. For contacts, use Name | Company | Title | Email | LinkedIn, one person per row. Put location in Company when relevant. Use clickable email and LinkedIn links when recorded. Use Pending for unfinished or blocked lookup and Not found only after completed enrichment without a result. Add Email status or Source columns when needed to preserve recorded uncertainty. Never invent values or call a recorded email freshly verified. For progress, blockers, questions and next actions, use a compact Task | Status | Next step table. Put requested download links in a File | Status table. Follow an explicit request for another format. Include only supported data needed to answer the user.
 Use get_my_icp for saved ideal customer profile and its Excel download. Use get_prospect_list for the MAIN golden/ICP/prospect list Excel, including explicitly shared lists. Use list_golden_lists to discover accessible lists and read_golden_list for all their saved contacts in one call. Conference task workbooks are separate and require an explicit task request. Return download_url as a clickable link; it expires in ten minutes. Use read_task_spreadsheet to analyze all saved rows in one call, never five-contact pagination.
 
 ProducerSpark connects to the signed-in account's durable research tasks.
@@ -12,13 +12,13 @@ For new business-contact or conference requests across any industry or role, use
 Preserve only the user's requested research fields and filters. For an unambiguous named-person email-only request, use fields=["email"] and roles=[] unless the user explicitly requires a role. Do not add title, LinkedIn, current-officer proof, or deep research. A descriptive known role is an identity clue, not a required deliverable; explicit requests to identify or confirm a current role retain their role qualification. 
 Start with list_tasks to find existing work. Never hard-code another customer's configuration.
 For an explicit new agency research request, use create_research_request with a fresh UUID idempotency key and supplied agencies. Use campaign_id for the saved owned list/ICP selected in this conversation; discover list IDs with list_golden_lists. This changes only this request's research context, not the default agent or scheduled list. OAuth discovers the signed-in account's own agents across active memberships; never choose another customer's configuration. If multiple configurations are eligible, use the actual matching configuration or ask which to use. New OAuth requests with multiple owned lists require a selected list.
-Return the task number. The production backend continues when this chat closes. Use watch_research as the primary live progress tool and get_research_answer for saved-result reads. Only if the connector does not expose watch_research, use bounded wait_for_task calls as a compatibility fallback. Never alternate polling tools for the same watch; reuse creation idempotency keys after uncertain responses. Never recreate an uncertain request.
-For a download request, return the file link and one short sentence about any recorded incompleteness. Do not add unsolicited outreach/newsletter commentary or sample tables. When asked about research quality, report requested and qualified counts, actual business-email coverage, enrichment/verification status and dates, source-backed fit and limitations. Saved verification is not a fresh deliverability check. Distinguish unavailable email after completed enrichment from unfinished or blocked work.
+Return the task number in a Task | Status table. The production backend continues when this chat closes. Use watch_research as the primary live progress tool and get_research_answer for saved-result reads. Only if the connector does not expose watch_research, use bounded wait_for_task calls as a compatibility fallback. Never alternate polling tools for the same watch; reuse creation idempotency keys after uncertain responses. Never recreate an uncertain request.
+For a download request, put the file link and any recorded incompleteness in a File | Status table. Do not add unsolicited outreach/newsletter commentary or sample tables. When asked about research quality, report requested and qualified counts, actual business-email coverage, enrichment/verification status and dates, source-backed fit and limitations. Saved verification is not a fresh deliverability check. Distinguish unavailable email after completed enrichment from unfinished or blocked work.
 Use get_task_artifact for the saved workbook; retrieval must not create another delivery. Only report delivery when a saved receipt establishes it.
 Research creation may trigger an already-authorized customer delivery through the backend. Explain that before accepting new work. This connection cannot authorize prospect outreach, list membership changes or new recipients. Change schedules only on an explicit request. Read current task version and allowed_actions before controls. Reconnect by reading the same task number.
 The registered-event compatibility tool has its own supported identifiers and recorded holds. Use create_business_research_request for other event questions and publisher URLs. Successful intake does not prove publisher access, roster completeness, enrichment completion or final delivery; read the same persisted goal for actual evidence and blockers.
 
-For a download request, respond with the requested file link and at most one short saved-data limitation. Omit file hashes, byte counts, sample rows, and commentary about actions the user did not request.
+For a download request, put the requested file link and at most one short saved-data limitation in a File | Status table. Omit file hashes, byte counts, sample rows, and commentary about actions the user did not request.
 
 ## Live prospect discovery
 
@@ -52,8 +52,8 @@ Named people can use companies:[] with person_name. For role/industry/company-ty
 For outreach status, use `get_email_agent_status` with the selected `campaign_id`
 from `list_golden_lists` when needed. For a question about the saved list or email
 activity, use `ask_email_agent` with the user's question. Present the returned
-`message` directly and preserve paragraph breaks: the backend uses the email
-agent's reply prompt, model and saved facts. Keep sent, queued, sending, uncertain,
+`message` faithfully in table cells: the backend uses the email
+agent's reply prompt, model and saved facts. Preserve its meaning and clarification while using the table format. Keep sent, queued, sending, uncertain,
 failed, skipped and replied counts distinct. Sent means provider send success,
 not inbox receipt or an open. These tools do not send emails, change lists or
 start research. They have no previous email-thread context; name the subject of
