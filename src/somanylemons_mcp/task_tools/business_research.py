@@ -61,6 +61,7 @@ class BusinessResearchSpec(BaseModel):
     kind: Literal["company_contacts", "conference_speakers"]
     companies: Annotated[list[BusinessCompany], Field(max_length=200)] | None = None
     company_scope: Annotated[Literal["fixed", "candidate_pool"], Field(description="Use candidate_pool for companies you selected to answer a broad industry/geography question: backend may discover replacements automatically until count is filled. Use fixed for customer-named required employers. Preserve the customer's original request verbatim.")] | None = None
+    company_stage: Annotated[Literal["startup"], Field(description="For startup requests, require official evidence of private venture-backed or growth-stage operations before a company counts toward fulfillment.")] | None = None
     roles: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
     person_name: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     # Caller geography is preserved exactly. US-first assumptions belong in new-request
