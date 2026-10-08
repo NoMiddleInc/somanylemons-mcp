@@ -14,6 +14,24 @@ from tests.test_research_progress import VirtualClock
 
 
 class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def test_saved_contact_can_be_displayed_without_ending_shortfall_recovery(self):
+        answer = {'id': 244, 'state': 'waiting_provider', 'fulfillment': 'unknown',
+                  'business_answer': {'counts': {'contacts': 1, 'requested': 5}},
+                  'contacts': [{'name': 'Saved Person', 'company': 'Observed Company',
+                                'title': 'CFO', 'email': 'saved@example.com',
+                                'linkedin': 'https://linkedin.com/in/saved-person',
+                                'email_status': 'guessed'}]}
+        update = live_update(answer, 244)
+        self.assertEqual(update['findings'][0]['email'], 'saved@example.com')
+        self.assertEqual(update['findings'][0]['linkedin'], answer['contacts'][0]['linkedin'])
+        self.assertEqual(update['findings'][0]['email_status'], 'guessed')
+        self.assertTrue(update['continue_watching'])
+        self.assertFalse(update['final_response_ready'])
+        brief = server_module.brief_answer(answer)
+        self.assertEqual(brief['contacts'], answer['contacts'])
+        self.assertIn('qualified saved contacts immediately', brief['response_policy'])
+        self.assertIn('automatically until final_response_ready', brief['response_policy'])
+
     def test_partial_current_goal_does_not_authorize_a_completed_contact_table(self):
         answer = {'id': 230, 'state': 'waiting_provider', 'fulfillment': 'unknown',
                   'business_answer': {'counts': {'contacts': 1, 'requested': 5}}}
@@ -44,7 +62,8 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(answer["continue_watching"])
         self.assertIn("Do not ask the customer to check again", answer["response_policy"])
         self.assertFalse(answer["final_response_ready"])
-        self.assertIn("silently until final_response_ready=true", answer["response_policy"])
+        self.assertIn("qualified saved contacts immediately", answer["response_policy"])
+        self.assertIn("keep watching this current goal automatically", answer["response_policy"])
         self.assertIn("get_research_answer(details=true)", answer["response_policy"])
         completed = server_module.brief_answer(compact_research_answer(self.task(state="completed", running=False)))
         self.assertNotIn("continue_watching", completed)

@@ -61,7 +61,7 @@ def live_update(answer, requested_goal_id):
             continue
         samples.append({key: row[key] for key in (
             "name", "company", "title", "role", "location", "fit", "reason",
-            "email_status", "enrichment_status", "source_references", "evidence_refs",
+            "email", "linkedin", "linkedin_url", "email_status", "enrichment_status", "source_references", "evidence_refs",
         ) if key in row})
     sources = (answer.get("sources") or [])[:3]
     facts = {
@@ -116,7 +116,7 @@ def live_update(answer, requested_goal_id):
     return {
         **facts, "cursor": cursor, "summary": summary,
         "final_response_ready": bool(finished or contact_ready),
-        "contact_table_policy": "Return the requested full contact table only from this current goal after final_response_ready. Never combine old partial, rejected or ineligible rows from other goals to fill the requested count.",
+        "contact_table_policy": "Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty, and continue recovery automatically. Claim the request is complete only after final_response_ready. Never combine old partial, rejected or ineligible rows from other goals to fill the requested count.",
         "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
         "observed_at": answer.get("updated_at"),

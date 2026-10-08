@@ -349,8 +349,10 @@ def brief_answer(answer):
         if gate["continue_watching"]:
             result["continue_watching"] = True
             result["response_policy"] = (
-                "Keep watching this current goal silently until final_response_ready=true. "
-                "Do not ask the customer to check again or present saved preview contacts as a final result. "
+                "Show this current goal's qualified saved contacts immediately as Name | Company | Title | Email | LinkedIn, "
+                "labelled with the saved count out of the requested count and recorded uncertainty. "
+                "Then keep watching this current goal automatically until final_response_ready=true. "
+                "Do not ask the customer to check again or end the response with saved preview contacts as the final result. "
                 "A full count before final validation is still work in progress. "
                 "Never combine contacts from historical goals to fill the count. "
                 "After completion use get_research_answer(details=true) with successive contact_page values "
@@ -549,7 +551,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         cursor: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None = None,
         timeout_seconds: Annotated[int, Field(ge=0, le=10)] = 10,
     ) -> dict:
-        """Watch one existing research job. First call returns immediately; pass the returned cursor for subsequent bounded waits. Returns real saved prospect/email counts, stage, up to three findings with evidence, blockers and follow-up suggestions. Keep calling silently with the same requested goal_id and latest cursor while continue_watching=true. Return the complete current-goal contact table only after final_response_ready=true; saved findings are previews and must not become a premature final reply. Stop on completion, pause or blockers. Never interpret steps or preview rows as found prospects; never claim previews are newly discovered. Research runs in the backend when this session closes. Campaign suggestions never send or enroll anyone."""
+        """Watch one existing research job. First call returns immediately; pass the returned cursor for subsequent bounded waits. Returns real saved prospect/email counts, stage, up to three findings with evidence, blockers and follow-up suggestions. Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty. Keep calling automatically with the same requested goal_id and latest cursor while continue_watching=true. Only claim full completion after final_response_ready=true; do not end the response with a partial result or ask the customer to restart. Stop on completion, pause or blockers. Never interpret steps or preview rows as found prospects; never claim previews are newly discovered. Research runs in the backend when this session closes. Campaign suggestions never send or enroll anyone."""
         deadline = time.monotonic() + timeout_seconds
         while True:
             resolved = await resolve_current_answer(
