@@ -118,7 +118,8 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("person_locations", spec["properties"])
         self.assertIn("per_company_count", spec["properties"])
         self.assertIn("person's location, never company headquarters", tool.description)
-        self.assertIn("first use Claude", tool.description)
+        self.assertIn("company_scope=candidate_pool", tool.description)
+        self.assertIn("company_scope", spec["properties"])
         self.assertIn("namesake", tool.description)
         self.assertNotIn("Perplexity", tool.description)
         for instruction in ("people outside golden lists are allowed", "assume United States first",
