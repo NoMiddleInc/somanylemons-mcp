@@ -97,7 +97,19 @@ def live_update(answer, requested_goal_id):
         "artifacts": answer.get("artifacts"),
         **{key: business[key] for key in ("answer_text", "response_policy") if key in business},
     }
-    cursor = hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
+    # Worker scheduling is not customer-visible progress. Keep raw state/stage
+    # in the response, but coalesce active queue/running churn in the cursor.
+    meaningful = {key: value for key, value in facts.items()
+                  if key not in {"state", "stage", "running", "next_action"}}
+    meaningful["state"] = state if stop else "active"
+    meaningful["next_action"] = facts["next_action"] if stop else None
+    meaningful["review_gates"] = {
+        key: business.get(key) for key in (
+            "fulfillment_review", "review_scope_current", "delivery", "closure")
+    }
+    # Changes beyond the three-row preview must wake the caller too.
+    meaningful["saved_contacts"] = answer.get("contacts") or []
+    cursor = hashlib.sha256(json.dumps(meaningful, sort_keys=True, default=str).encode()).hexdigest()
     if found is None:
         summary = "Prospect count not yet recorded."
     elif target is not None:
@@ -134,12 +146,16 @@ def live_update(answer, requested_goal_id):
         **contact_table_metadata(),
         "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
+        "next_tool": "watch_research" if not stop else None,
+        "next_tool_arguments": {
+            "goal_id": requested_goal_id, "cursor": cursor, "timeout_seconds": 25,
+        } if not stop else None,
         "observed_at": answer.get("updated_at"),
         "email_note": "Recorded email and verification statuses are saved evidence, not a fresh deliverability check.",
         "findings_scope": "Up to three saved preview contacts and sources; not newly discovered contacts or a complete cohort.",
         "campaign_action": "suggest_only",
         "completion_instruction": (
-            "Continue watching in this response until final_response_ready; a poll timeout or unchanged cursor is not a final answer. Do not ask the customer to check again, present a partial table as fulfillment, or combine contacts from historical goals to fill the count."
+            "Continue watching in this response until final_response_ready; Use next_tool_arguments for the next watch call. A poll timeout or unchanged cursor is not a final answer. Reading get_research_answer for saved contacts does not authorize ending the response while final_response_ready=false. Do not ask the customer to check again, present a partial table as fulfillment, or combine contacts from historical goals to fill the count."
             if not stop else
             "Read get_research_answer(details=true) with all contact pages or read_task_spreadsheet and return the full requested contact table."
             if finished else "Explain the actual saved outcome without inventing missing data."

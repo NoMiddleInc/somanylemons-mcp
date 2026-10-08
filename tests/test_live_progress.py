@@ -141,8 +141,68 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
         newer = self.task(version=99, updated_at="2026-10-06T20:00:00Z")
         result, clock, calls = await self.watch([newer], cursor=self.update(task)["cursor"])
         self.assertFalse(result["changed"])
+        self.assertEqual(clock.elapsed, 25)
+        self.assertEqual(len(calls), 5)
+        self.assertTrue(result["continue_watching"])
+
+    async def test_active_scheduling_churn_coalesces_but_preserves_observed_state(self):
+        task = self.task()
+        queued = self.task(state="queued", running=False, current_step="Research contacts", next_action="Wait")
+        result, clock, calls = await self.watch([queued], cursor=self.update(task)["cursor"])
+        self.assertEqual(clock.elapsed, 25)
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["state"], "queued")
+        self.assertEqual(result["stage"], "Research contacts")
+        self.assertEqual(result["next_tool"], "watch_research")
+        self.assertEqual(result["next_tool_arguments"], {
+            "goal_id": 74, "cursor": result["cursor"], "timeout_seconds": 25})
+        self.assertFalse(result["final_response_ready"])
+        self.assertIn("does not authorize ending", result["completion_instruction"])
+
+    async def test_review_gate_and_actual_blocker_wake_immediately(self):
+        task = self.task()
+        for changed in (self.task(blocker={"reason": "provider authentication rejected"}),
+                        self.task(manual_review_required=True)):
+            result, clock, _ = await self.watch([task, changed], cursor=self.update(task)["cursor"])
+            self.assertEqual(clock.elapsed, 5)
+            self.assertTrue(result["changed"])
+            self.assertFalse(result["continue_watching"])
+            self.assertIsNone(result["next_tool_arguments"])
+        reviewed = copy.deepcopy(task)
+        reviewed["business_answer"]["fulfillment_review"] = {"passed": True}
+        result, clock, _ = await self.watch([task, reviewed], cursor=self.update(task)["cursor"])
+        self.assertEqual(clock.elapsed, 5)
+        self.assertTrue(result["changed"])
+        self.assertTrue(result["continue_watching"])
+
+    async def test_slow_read_consumes_deadline_without_extra_sleep_or_read(self):
+        clock = VirtualClock()
+        calls = []
+        task = self.task()
+        def handler(request):
+            calls.append(request)
+            clock.elapsed += 10
+            return httpx.Response(200, json={"data": task})
+        api = TaskApiClient(TaskApiConfig("https://example.com", "mock-key"),
+                            transport=httpx.MockTransport(handler))
+        with patch.object(server_module, "time", SimpleNamespace(monotonic=clock.monotonic)), \
+             patch.object(server_module, "asyncio", SimpleNamespace(sleep=clock.sleep)):
+            content = await create_server(api).call_tool("watch_research", {
+                "goal_id": 74, "cursor": self.update(task)["cursor"], "timeout_seconds": 10})
+        if isinstance(content, tuple):
+            content = content[0]
+        result = json.loads(content[0].text)
         self.assertEqual(clock.elapsed, 10)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(result["changed"])
+        self.assertTrue(result["continue_watching"])
+
+    async def test_zero_timeout_returns_immediately_even_with_same_cursor(self):
+        task = self.task()
+        result, clock, calls = await self.watch([task], cursor=self.update(task)["cursor"], timeout_seconds=0)
+        self.assertEqual(clock.elapsed, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(result["changed"])
         self.assertTrue(result["continue_watching"])
 
     async def test_email_and_evidence_updates_return_early(self):
@@ -221,13 +281,16 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
         tool = next(tool for tool in await create_server(TaskApiClient(
             TaskApiConfig("https://example.com", "mock-key"))).list_tools() if tool.name == "watch_research")
         self.assertTrue(tool.annotations.readOnlyHint)
-        self.assertEqual(tool.inputSchema["properties"]["timeout_seconds"]["maximum"], 10)
+        self.assertEqual(tool.inputSchema["properties"]["timeout_seconds"]["maximum"], 25)
 
     def test_plugin_and_wheel_skill_match(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
-        self.assertEqual((root / "skills/producerspark/SKILL.md").read_bytes(),
-                         (root / "src/somanylemons_mcp/skills/producerspark/SKILL.md").read_bytes())
+        skill = (root / "skills/producerspark/SKILL.md").read_bytes()
+        self.assertEqual(skill, (root / "src/somanylemons_mcp/skills/producerspark/SKILL.md").read_bytes())
+        self.assertEqual(skill, (root / "plugins/producerspark/skills/producerspark/SKILL.md").read_bytes())
+        self.assertIn(b"timeout_seconds=25", skill)
+        self.assertIn(b"does not permit a terminal answer while final_response_ready=false", skill)
 
 
 class HelpfulBlockerTests(unittest.TestCase):
