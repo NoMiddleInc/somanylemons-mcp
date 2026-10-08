@@ -325,7 +325,7 @@ def brief_answer(answer):
             if field in answer:
                 result[field] = answer[field]
         result["response_policy"] = (
-            "Show the available saved contacts now as Name | Company | Title | Email | LinkedIn. "
+            "Available saved contacts remain readable as Name | Company | Title | Email | LinkedIn. "
             "Preserve email verification and uncertainty; never label guessed emails verified. "
             "Use get_research_answer(details=true) with successive contact_page values to retrieve "
             "every available contact. Spreadsheet generation, export failure, unfinished research "
@@ -342,6 +342,21 @@ def brief_answer(answer):
             "After completion use get_research_answer(details=true), paging contacts, "
             "or read_task_spreadsheet to return the full Name | Company | Title | Email | LinkedIn table."
         )
+    if isinstance(business, dict):
+        gate = live_update(answer, answer.get("id"))
+        result["final_response_ready"] = gate["final_response_ready"]
+        result["contact_table_policy"] = gate["contact_table_policy"]
+        if gate["continue_watching"]:
+            result["continue_watching"] = True
+            result["response_policy"] = (
+                "Keep watching this current goal silently until final_response_ready=true. "
+                "Do not ask the customer to check again or present saved preview contacts as a final result. "
+                "A full count before final validation is still work in progress. "
+                "Never combine contacts from historical goals to fill the count. "
+                "After completion use get_research_answer(details=true) with successive contact_page values "
+                "or read_task_spreadsheet and return the full Name | Company | Title | Email | LinkedIn table. "
+                "Preserve recorded uncertainty; never label guessed emails verified."
+            )
     return result
 
 
@@ -534,7 +549,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         cursor: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None = None,
         timeout_seconds: Annotated[int, Field(ge=0, le=10)] = 10,
     ) -> dict:
-        """Watch one existing research job. First call returns immediately; pass the returned cursor for subsequent bounded waits. Returns real saved prospect/email counts, stage, up to three findings with evidence, blockers and follow-up suggestions. Show meaningful findings in a contact table and saved progress in a compact status table when changed=true. Keep calling with the same requested goal_id and latest cursor while continue_watching=true; show a quiet heartbeat at most every 30 seconds on unchanged results. Stop on completion, pause or blockers. Never interpret steps or preview rows as found prospects; never claim previews are newly discovered. Research runs in the backend when this session closes. Campaign suggestions never send or enroll anyone."""
+        """Watch one existing research job. First call returns immediately; pass the returned cursor for subsequent bounded waits. Returns real saved prospect/email counts, stage, up to three findings with evidence, blockers and follow-up suggestions. Keep calling silently with the same requested goal_id and latest cursor while continue_watching=true. Return the complete current-goal contact table only after final_response_ready=true; saved findings are previews and must not become a premature final reply. Stop on completion, pause or blockers. Never interpret steps or preview rows as found prospects; never claim previews are newly discovered. Research runs in the backend when this session closes. Campaign suggestions never send or enroll anyone."""
         deadline = time.monotonic() + timeout_seconds
         while True:
             resolved = await resolve_current_answer(

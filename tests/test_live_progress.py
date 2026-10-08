@@ -34,7 +34,8 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
                 })
                 self.assertEqual(answer["contacts"], rows)
                 self.assertEqual(answer["pagination"]["contacts_total"], 30)
-                self.assertIn("Show the available saved contacts now", answer["response_policy"])
+                self.assertNotIn("Show the available saved contacts now", answer["response_policy"])
+                self.assertFalse(answer["final_response_ready"])
                 self.assertIn("never label guessed emails verified", answer["response_policy"])
                 self.assertIn("successive contact_page", answer["response_policy"])
 
@@ -42,6 +43,8 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
         answer = server_module.brief_answer(compact_research_answer(self.task()))
         self.assertTrue(answer["continue_watching"])
         self.assertIn("Do not ask the customer to check again", answer["response_policy"])
+        self.assertFalse(answer["final_response_ready"])
+        self.assertIn("silently until final_response_ready=true", answer["response_policy"])
         self.assertIn("get_research_answer(details=true)", answer["response_policy"])
         completed = server_module.brief_answer(compact_research_answer(self.task(state="completed", running=False)))
         self.assertNotIn("continue_watching", completed)
