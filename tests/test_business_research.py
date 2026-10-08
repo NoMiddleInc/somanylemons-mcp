@@ -18,6 +18,12 @@ def rendered(result):
 
 
 class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
+    def test_compact_contact_answer_preserves_canonical_two_line_response(self):
+        canonical = {"answer_text": "Email: saved@example.com\nLinkedIn: Unavailable", "response_policy": "Reply with answer_text only", "contacts": []}
+        projected = compact_research_answer({"id": 152, "business_answer": canonical})
+        self.assertEqual(projected["business_answer"]["answer_text"], canonical["answer_text"])
+        self.assertEqual(projected["business_answer"]["response_policy"], canonical["response_policy"])
+
     async def test_missing_business_criteria_uses_original_goal_and_exact_control_binding(self):
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertIn("supply_business_inputs", tools)

@@ -79,6 +79,7 @@ def live_update(answer, requested_goal_id):
         "fulfillment": answer.get("fulfillment"), "full_request_fulfilled": fulfilled,
         "manual_review_required": manual_review,
         "artifacts": answer.get("artifacts"),
+        **{key: business[key] for key in ("answer_text", "response_policy") if key in business},
     }
     cursor = hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
     if found is None:
@@ -109,9 +110,12 @@ def live_update(answer, requested_goal_id):
     elif stop:
         suggestions.append("Review the saved partial results and their remaining gaps.")
         suggestions.append("Explain the specific recorded blocker and the smallest next step; reuse this research task.")
+    contact_ready = isinstance(business.get("answer_text"), str) and bool(business["answer_text"])
+    if contact_ready:
+        summary, suggestions, stop = business["answer_text"], [], True
     return {
         **facts, "cursor": cursor, "summary": summary,
-        "monitor_status": "finished" if finished else "needs_attention" if stop else "watching",
+        "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
         "observed_at": answer.get("updated_at"),
         "email_note": "Recorded email and verification statuses are saved evidence, not a fresh deliverability check.",

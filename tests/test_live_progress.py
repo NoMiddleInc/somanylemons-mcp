@@ -14,6 +14,17 @@ from tests.test_research_progress import VirtualClock
 
 
 class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def test_contact_answer_stops_chat_watch_without_claiming_delivery_or_suggesting_campaign(self):
+        task = self.task()
+        task["business_answer"].update(answer_text="Email: saved@example.com\nLinkedIn: Unavailable", response_policy="Reply with answer_text only")
+        update = live_update(compact_research_answer(task), task["id"])
+        self.assertEqual(update["summary"], task["business_answer"]["answer_text"])
+        self.assertEqual(update["answer_text"], update["summary"])
+        self.assertEqual(update["suggestions"], [])
+        self.assertFalse(update["continue_watching"])
+        self.assertEqual(update["monitor_status"], "answer_available")
+        self.assertEqual(update["state"], "running")
+
     def task(self, **changes):
         task = {
             "id": 74, "state": "running", "running": True,
