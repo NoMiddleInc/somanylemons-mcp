@@ -14,6 +14,16 @@ from tests.test_research_progress import VirtualClock
 
 
 class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def test_legacy_polling_response_requires_continuation_and_exposes_result_reader(self):
+        answer = server_module.brief_answer(compact_research_answer(self.task()))
+        self.assertTrue(answer["continue_watching"])
+        self.assertIn("Do not ask the customer to check again", answer["response_policy"])
+        self.assertIn("get_research_answer(details=true)", answer["response_policy"])
+        completed = server_module.brief_answer(compact_research_answer(self.task(state="completed", running=False)))
+        self.assertNotIn("continue_watching", completed)
+        held = server_module.brief_answer(compact_research_answer(self.task(state="needs_attention", running=False)))
+        self.assertNotIn("continue_watching", held)
+
     def test_contact_answer_stops_chat_watch_without_claiming_delivery_or_suggesting_campaign(self):
         task = self.task()
         task["business_answer"].update(answer_text="Email: saved@example.com\nLinkedIn: Unavailable", response_policy="Reply with answer_text only")

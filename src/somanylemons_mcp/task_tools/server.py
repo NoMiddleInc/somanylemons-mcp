@@ -319,6 +319,16 @@ def brief_answer(answer):
     if "feedback_review_snapshot" in result:
         result["feedback_review_snapshot"] = brief_feedback_projection(result["feedback_review_snapshot"])
     result["details_available"] = "Use get_research_answer(details=true) for saved samples and provenance; read_task_spreadsheet for the full workbook."
+    if result.get("state") in {"pending", "running", "waiting_dependency", "queued"} and isinstance(result.get("business_answer"), dict) and not result["business_answer"].get("answer_text"):
+        result["continue_watching"] = True
+        result["response_policy"] = (
+            "Research is still active. Continue the existing watch in this response using "
+            "watch_research with the same goal_id and returned cursor, or wait_for_task if "
+            "watch_research is unavailable. A polling timeout is not completion. Do not "
+            "ask the customer to check again or present a progress-only final answer. "
+            "After completion use get_research_answer(details=true), paging contacts, "
+            "or read_task_spreadsheet to return the full Name | Company | Title | Email | LinkedIn table."
+        )
     return result
 
 
@@ -381,7 +391,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "backend's existing authorized customer channel and budget/quality gates. These tools do not authorize prospect "
             "outreach, memberships, meeting briefs, new recipients or bypassing completion checks. OAuth is limited to its owner's agents across active memberships; developer keys retain their organization boundary. A token never grants another customer's agent. An acknowledgment is not completion. "
             "Use watch_research as the primary live progress tool for interactive prospect finding: show saved counts, stage, evidence and meaningful changes, then suggest campaign planning after completion without sending. "
-            "For an immediate research answer, create the request once and use watch_research with its returned cursor until completed or a real blocker appears. wait_for_task is the compatibility fallback only when watch_research is unavailable; never alternate polling tools for the same watch. "
+            "For an immediate research answer, create the request once and use watch_research with its returned cursor until completed or a real blocker appears. wait_for_task is the compatibility fallback only when watch_research is unavailable; never alternate polling tools for the same watch. A polling timeout or several unchanged responses never completes the customer's request. Keep watching in the active response and read the final full workbook; never finish by telling the customer to ask you to check again. For broad industry/geography requests, researched company choices are replaceable seeds: set company_scope=candidate_pool and preserve the actual customer question. "
             "Before the first wait and between waits, give a brief user-facing update using the recorded current_step, state, actual contact/email counts and blockers. "
             "Waits return within a short polling window or when saved progress changes. Never silently chain waits, invent a stage or ETA, or present worker steps as people. "
             "If no new progress is recorded, say that plainly; do not describe queued or blocked work as active research. "

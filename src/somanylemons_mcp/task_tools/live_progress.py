@@ -121,4 +121,10 @@ def live_update(answer, requested_goal_id):
         "email_note": "Recorded email and verification statuses are saved evidence, not a fresh deliverability check.",
         "findings_scope": "Up to three saved preview contacts and sources; not newly discovered contacts or a complete cohort.",
         "campaign_action": "suggest_only",
+        "completion_instruction": (
+            "Continue watching in this response; a poll timeout is not a final answer. Do not ask the customer to check again."
+            if not stop else
+            "Read get_research_answer(details=true) with all contact pages or read_task_spreadsheet and return the full requested contact table."
+            if finished else "Explain the actual saved outcome without inventing missing data."
+        ),
     }
