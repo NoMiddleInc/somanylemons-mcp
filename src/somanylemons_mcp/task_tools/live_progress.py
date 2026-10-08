@@ -7,6 +7,22 @@ ATTENTION = {"cancelled", "superseded", "failed", "needs_attention", "blocked",
              "waiting_customer", "waiting_external", "paused"}
 
 
+REQUIRED_CONTACT_COLUMNS = ("Name", "Company", "Title", "Email", "LinkedIn")
+CONTACT_TABLE_POLICY = (
+    "Render the contact table with these exact columns in this order: Name | Company | Title | Email | LinkedIn. "
+    "Keep the Company column and repeat each contact's recorded company on every row, even when all contacts share one employer; "
+    "an employer in the introduction does not replace the Company column. "
+    "Use saved row values only; do not infer missing company, title or contact details. "
+    "Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty, "
+    "and continue recovery automatically. Claim the request is complete only after final_response_ready. "
+    "Never combine old partial, rejected or ineligible rows from other goals to fill the requested count."
+)
+
+
+def contact_table_metadata():
+    return {"required_contact_columns": list(REQUIRED_CONTACT_COLUMNS), "contact_table_policy": CONTACT_TABLE_POLICY}
+
+
 def number(*values):
     return next((value for value in values if type(value) is int and value >= 0), None)
 
@@ -115,7 +131,7 @@ def live_update(answer, requested_goal_id):
     return {
         **facts, "cursor": cursor, "summary": summary,
         "final_response_ready": bool(finished or contact_ready),
-        "contact_table_policy": "Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty, and continue recovery automatically. Claim the request is complete only after final_response_ready. Never combine old partial, rejected or ineligible rows from other goals to fill the requested count.",
+        **contact_table_metadata(),
         "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
         "observed_at": answer.get("updated_at"),

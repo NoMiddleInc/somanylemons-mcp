@@ -21,7 +21,7 @@ from .feedback_review import brief_feedback_projection, feedback_projection, rea
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 from .business_research import BusinessResearchSpec, saved_business_answer
-from .live_progress import live_update
+from .live_progress import live_update, contact_table_metadata
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=5000)]
@@ -209,6 +209,8 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
         if (business["blocker"] or {}).get("code") == "business_conference_human_review_required":
             business["manual_review_required"] = True
             business["next_action"] = "awaiting_human_review"
+        if not (business.get("business_answer") or {}).get("answer_text"):
+            business.update(contact_table_metadata())
         return bounded_examples_and_artifacts(business)
     answer = task.get("research_answer")
     result["research_answer"] = dict(answer) if isinstance(answer, dict) else None
@@ -345,7 +347,16 @@ def brief_answer(answer):
     if isinstance(business, dict):
         gate = live_update(answer, answer.get("id"))
         result["final_response_ready"] = gate["final_response_ready"]
-        result["contact_table_policy"] = gate["contact_table_policy"]
+        result.update(contact_table_metadata())
+        if gate["final_response_ready"] and not business.get("answer_text"):
+            result["response_policy"] = (
+                "Return all requested current-goal saved contacts in the full Name | Company | Title | Email | LinkedIn table. "
+                "Keep the Company column and repeat the recorded company on every row even for a single employer. "
+                "An employer named in the introduction cannot replace that column. "
+                "Preserve recorded email verification and uncertainty; never label guessed emails verified. "
+                "Use get_research_answer(details=true) with successive contact_page values or read_task_spreadsheet for all rows. "
+                "Use only this current goal's qualified saved rows and the recorded final fulfillment checks."
+            )
         if gate["continue_watching"]:
             result["continue_watching"] = True
             result["response_policy"] = (
