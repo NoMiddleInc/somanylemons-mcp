@@ -13,6 +13,9 @@ CONTACT_TABLE_POLICY = (
     "Keep the Company column and repeat each contact's recorded company on every row, even when all contacts share one employer; "
     "an employer in the introduction does not replace the Company column. "
     "Use saved row values only; do not infer missing company, title or contact details. "
+    "Evaluate employer geography using recorded company geography, and personal geography using recorded person geography; "
+    "generic location/city/state can describe the person and must not replace employer evidence. "
+    "Preserve actual conflicting or missing evidence and provider uncertainty; recorded employer geography is not independent verification. "
     "Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty, "
     "and continue recovery automatically. Claim the request is complete only after final_response_ready. "
     "Never combine old partial, rejected or ineligible rows from other goals to fill the requested count."
@@ -77,6 +80,9 @@ def live_update(answer, requested_goal_id):
             continue
         samples.append({key: row[key] for key in (
             "name", "company", "title", "role", "location", "fit", "reason",
+            "company_city", "company_state", "company_country", "company_location", "raw_address",
+            "person_city", "person_state", "person_country", "person_location", "person_geography_source",
+            "geography_fields_truncated", "field_provenance",
             "email", "linkedin", "linkedin_url", "email_status", "enrichment_status", "source_references", "evidence_refs",
         ) if key in row})
     sources = (answer.get("sources") or [])[:3]

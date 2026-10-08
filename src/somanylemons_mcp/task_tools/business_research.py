@@ -16,7 +16,9 @@ BusinessField = Literal[
     "why_selected", "business_email", "linkedin_url", "company_website", "enrichment_date",
     "email_verification_status", "session",
 ]
-PROVENANCE_FIELDS = {"status", "source", "source_url", "source_operation_id", "content_hash",
+GEOGRAPHY_FIELDS = {"company_city", "company_state", "company_country", "company_location", "raw_address",
+                    "person_city", "person_state", "person_country", "person_location", "person_geography_source"}
+PROVENANCE_FIELDS = {"scope", "status", "source", "source_url", "source_operation_id", "content_hash",
                      "observed_at", "uncertainty", "reason", "provider", "provider_status"}
 
 
@@ -129,6 +131,10 @@ def saved_business_answer(task, result, *, contact_page, source_page):
         if not isinstance(row, dict):
             continue
         projected = {key: value for key, value in row.items() if key in fields}
+        projected.update({key: str(row[key])[:500] for key in GEOGRAPHY_FIELDS
+                          if key in row and row[key] is not None})
+        projected["geography_fields_truncated"] = any(
+            len(str(row[key])) > 500 for key in GEOGRAPHY_FIELDS if key in row and row[key] is not None)
         evidence = row.get("evidence_refs") or []
         projected["evidence_refs"] = [{key: str(value)[:300] if key == "quote" else value for key, value in ref.items() if key in {
             "url", "source_url", "content_hash", "observed_at", "quote", "field", "provider",
