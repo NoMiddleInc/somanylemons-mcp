@@ -24,7 +24,7 @@ class BusinessCompanyCriteriaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_actual_tool_preserves_industry_employee_range_and_personal_location(self):
         calls = []
-        spec = {"kind": "company_contacts", "companies": [], "roles": ["CFO"],
+        spec = {"kind": "company_contacts", "companies": [{"name": "Verified Software Company"}], "roles": ["CFO"],
                 "industries": ["SaaS", "Software"],
                 "employee_range": {"min": 50, "max": 500},
                 "person_locations": ["United States"], "fields": ["email"], "count": 10}
@@ -33,6 +33,7 @@ class BusinessCompanyCriteriaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/business-research")
         self.assertEqual(json.loads(calls[0].content)["spec"], spec)
         self.assertEqual(calls[0].headers["x-api-key"], "customer")
+        self.assertEqual(json.loads(calls[0].content)["intake_channel"], "mcp_v1")
 
     async def test_legacy_request_has_no_new_criteria_defaults(self):
         calls = []

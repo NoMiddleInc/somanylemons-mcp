@@ -87,7 +87,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(tool.annotations.idempotentHint)
         self.assertFalse(tool.annotations.readOnlyHint)
         schema = tool.inputSchema
-        self.assertEqual(set(schema["required"]), {"request", "idempotency_key"})
+        self.assertEqual(set(schema["required"]), {"request", "idempotency_key", "spec"})
         self.assertEqual(
             schema["properties"]["research_depth"],
             {
@@ -112,7 +112,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("person_locations", spec["properties"])
         self.assertIn("per_company_count", spec["properties"])
         self.assertIn("person's location, never company headquarters", tool.description)
-        self.assertIn("omit spec", tool.description)
+        self.assertIn("first use Claude", tool.description)
         self.assertIn("namesake", tool.description)
         self.assertNotIn("Perplexity", tool.description)
         for instruction in ("people outside golden lists are allowed", "assume United States first",
@@ -129,11 +129,11 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             calls.append(json.loads(request.content))
             return httpx.Response(200, json={"data": {"id": 71, "state": "queued"}})
         specs = [
-            {"kind": "company_contacts", "companies": [], "roles": ["GTM engineer"], "person_locations": ["Chicago"], "count": 5},
+            {"kind": "company_contacts", "companies": [{"name": "Verified Chicago Company"}], "roles": ["GTM engineer"], "person_locations": ["Chicago"], "count": 5},
             {"kind": "company_contacts", "companies": [], "person_name": "Satya Nadella", "count": 1},
             {"kind": "company_contacts", "companies": [{"name": "Costco", "domain": "costco.com"}], "roles": ["CFO"], "count": 1},
             {"kind": "company_contacts", "companies": [{"name": f"Company {number}"} for number in range(10)], "roles": ["CEO", "co-CEO"], "per_company_count": 1, "count": 10},
-            {"kind": "company_contacts", "companies": [], "roles": ["CFO"], "person_locations": ["New York City"], "count": 3},
+            {"kind": "company_contacts", "companies": [{"name": "Verified New York Company"}], "roles": ["CFO"], "person_locations": ["New York City"], "count": 3},
         ]
         for spec in specs:
             await invoke_task("create_business_research_request", {
@@ -152,13 +152,13 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json={"data": {"id": 71, "state": "queued"}})
         cases = [
             ("US first assumed because personal geography was omitted; find five CFOs.",
-             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["United States"], "count": 5}),
+             {"kind": "company_contacts", "companies": [{"name": "Dell"}], "roles": ["CFO"], "person_locations": ["United States"], "count": 5}),
             ("Find five CFOs in Chicago.",
-             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["Chicago"], "count": 5}),
+             {"kind": "company_contacts", "companies": [{"name": "Dell"}], "roles": ["CFO"], "person_locations": ["Chicago"], "count": 5}),
             ("Find five CFOs in Canada.",
-             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": ["Canada"], "count": 5}),
+             {"kind": "company_contacts", "companies": [{"name": "Dell"}], "roles": ["CFO"], "person_locations": ["Canada"], "count": 5}),
             ("Find five CFOs worldwide, with no personal geography restriction.",
-             {"kind": "company_contacts", "roles": ["CFO"], "person_locations": [], "count": 5}),
+             {"kind": "company_contacts", "companies": [{"name": "Dell"}], "roles": ["CFO"], "person_locations": [], "count": 5}),
             ("All published speakers at the supplied 2026 conference edition, globally.",
              {"kind": "conference_speakers", "event": {"name": "Global Congress", "year": 2026,
               "source_urls": ["https://publisher.example.com/speakers"]}, "all": True}),
@@ -215,6 +215,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             "create_business_research_request",
             {
                 "request": "Deep research the supplied company contacts.",
+                "spec": {"kind": "company_contacts", "companies": [{"name": "Dell"}]},
                 "research_depth": "deep",
                 "idempotency_key": "22222222-2222-4222-8222-222222222222",
             },
@@ -235,16 +236,43 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):
             BusinessResearchSpec(kind="company_contacts", fields=["name"] * 41)
 
-    async def test_request_only_defers_planning_and_uncertain_retry_reuses_exact_uuid(self):
+    async def test_named_scope_uncertain_retry_reuses_exact_uuid(self):
         calls = []
         def handler(request):
             calls.append(json.loads(request.content))
             return httpx.Response(200, json={"data": {"id": 72, "state": "queued", "contract": {"workflow": "business_research"}}})
-        arguments = {"request": "Find the CIO at Dell", "idempotency_key": "22222222-2222-4222-8222-222222222222"}
+        arguments = {"spec": {"kind": "company_contacts", "companies": [{"name": "Dell"}], "roles": ["CIO"]}, "request": "Find the CIO at Dell", "idempotency_key": "22222222-2222-4222-8222-222222222222"}
         for _ in range(2):
             await invoke_task("create_business_research_request", arguments, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
-        expected = {**arguments, "research_depth": "standard"}
+        expected = {**arguments, "research_depth": "standard", "intake_channel": "mcp_v1"}
         self.assertEqual(calls, [expected, expected])
+
+    async def test_request_only_cannot_bypass_mcp_v1_named_scope(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": {}})
+        with self.assertRaises(ToolError):
+            await invoke_task("create_business_research_request", {
+                "request": "10 CEOs of B2B marketing agencies in Chicago",
+                "idempotency_key": "22222222-2222-4222-8222-222222222222",
+            }, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+        self.assertEqual(calls, [])
+
+    async def test_backend_named_scope_rejection_is_reported_without_fallback_search(self):
+        calls = []
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(400, json={"detail": "MCP v1 accepts named companies or an individual person. Find and verify matching company names first."})
+        spec = {"kind": "company_contacts", "roles": ["CEO"], "person_locations": ["Chicago"], "count": 10}
+        with self.assertRaisesRegex(ToolError, "named companies"):
+            await invoke_task("create_business_research_request", {
+                "request": "10 CEOs of B2B marketing agencies in Chicago", "spec": spec,
+                "idempotency_key": "22222222-2222-4222-8222-222222222222",
+            }, api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["intake_channel"], "mcp_v1")
+        self.assertEqual(calls[0]["spec"], spec)
 
     def test_current_generic_evidence_projects_saved_rows_without_inventing_fulfillment(self):
         task = {
