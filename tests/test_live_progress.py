@@ -164,7 +164,7 @@ class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result["continue_watching"])
             self.assertEqual(clock.elapsed, 0)
             self.assertEqual(result["campaign_action"], "suggest_only")
-            self.assertEqual(any("email campaign" in text for text in result["suggestions"]), state == "completed")
+            self.assertFalse(any("email campaign" in text for text in result["suggestions"]))
 
     def test_partial_completion_does_not_offer_launch(self):
         for changes in ({}, {"fulfillment": "partial"}, {"manual_review_required": True}):

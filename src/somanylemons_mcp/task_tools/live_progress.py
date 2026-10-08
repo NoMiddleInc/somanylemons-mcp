@@ -104,7 +104,6 @@ def live_update(answer, requested_goal_id):
     suggestions = []
     if finished:
         suggestions.append("Review or download the saved prospect list.")
-        suggestions.append("Would you like to plan an email campaign for these prospects?")
     elif conference_review:
         suggestions.append("Our team will review the saved conference speaker email request; no customer retry is needed.")
     elif stop:
