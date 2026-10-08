@@ -309,7 +309,7 @@ def compact_research_answer(task, agency_page=1, contact_page=1, source_page=1):
 
 
 def brief_answer(answer):
-    """Keep status and coverage truthful without unsolicited sample rows or internals."""
+    """Keep status concise while exposing available business contacts immediately."""
     hidden = {"contacts", "sources", "pagination", "email_gaps", "public_unverified_email_examples",
               "public_unverified_email_example_scope", "steps", "step_metadata_returned",
               "step_preview_scope", "step_preview_complete", "steps_total"}
@@ -319,9 +319,22 @@ def brief_answer(answer):
     if "feedback_review_snapshot" in result:
         result["feedback_review_snapshot"] = brief_feedback_projection(result["feedback_review_snapshot"])
     result["details_available"] = "Use get_research_answer(details=true) for saved samples and provenance; read_task_spreadsheet for the full workbook."
+    business = result.get("business_answer")
+    if isinstance(business, dict) and not business.get("answer_text") and answer.get("contacts"):
+        for field in ("contacts", "pagination", "email_gaps"):
+            if field in answer:
+                result[field] = answer[field]
+        result["response_policy"] = (
+            "Show the available saved contacts now as Name | Company | Title | Email | LinkedIn. "
+            "Preserve email verification and uncertainty; never label guessed emails verified. "
+            "Use get_research_answer(details=true) with successive contact_page values to retrieve "
+            "every available contact. Spreadsheet generation, export failure, unfinished research "
+            "or internal delivery review must not hide contacts already returned by the backend. "
+            "Describe these as saved results, not proof of full request fulfillment or file delivery."
+        )
     if result.get("state") in {"pending", "running", "waiting_dependency", "queued"} and isinstance(result.get("business_answer"), dict) and not result["business_answer"].get("answer_text"):
         result["continue_watching"] = True
-        result["response_policy"] = (
+        result["response_policy"] = result.get("response_policy", "") + " " + (
             "Research is still active. Continue the existing watch in this response using "
             "watch_research with the same goal_id and returned cursor, or wait_for_task if "
             "watch_research is unavailable. A polling timeout is not completion. Do not "
@@ -583,8 +596,9 @@ def create_server(api: TaskApiClient) -> FastMCP:
         spec: BusinessResearchSpec,
         config_id: PositiveId | None = None,
         research_depth: Literal["standard", "deep"] = "standard",
+        contact_provider: Literal["apollo", "treg"] | None = None,
     ) -> dict:
-        """Research named employers or people in any industry and role, such as Dell CIO, with a structured spec. Preserve the actual customer question verbatim. For a broad industry/geography question, use your available search tools to select matching employer candidates and set company_scope=candidate_pool; those companies are replaceable acquisition seeds and the backend searches for additional firms automatically when contacts fall short. Use company_scope=fixed for employers the customer specifically requires. Preserve original industry, geography, role and size criteria; company headquarters never imply personal geography. Set the requested count and fields including title, email and linkedin. Do not add official identity proof requirements the customer did not request. Ordinary prospect research uses bounded automatic recovery, domain resolution, alternate searches and independently reviewed final results without requesting human review. Only missing conference details require clarification. Never invent contacts, emails, LinkedIn or domains, and never repeat an unresolved paid lookup. Account-approved spending and authorized customer delivery apply; no prospect outreach. Return the goal ID and keep watching while recovery runs. Reuse the UUID after an uncertain response; never create replacement work. Already named conference speakers requesting email or LinkedIn use kind=company_contacts, person_name, count1 and no event. For several named people, use one individual request per person with a separate UUID; never concatenate names. Named-person requests preserve person_name and count1; no substitute people. person_locations means the person's location, never company headquarters. If personal geography is omitted, assume United States first, disclose that assumption and supply person_locations=["United States"]. Explicit city/country overrides that assumption, and explicit worldwide/global means global. Never infer actual personal geography from this assumption. Preserve conference edition coverage. Do not change saved goals or select a namesake without identity evidence. people outside golden lists are allowed."""
+        """Research named employers or people in any industry and role, such as Dell CIO, with a structured spec. Preserve the actual customer question verbatim. For a broad industry/geography question, use your available search tools to select matching employer candidates and set company_scope=candidate_pool; those companies are replaceable acquisition seeds and the backend searches for additional firms automatically when contacts fall short. Use company_scope=fixed for employers the customer specifically requires. Preserve original industry, geography, role and size criteria; company headquarters never imply personal geography. Set the requested count and fields including title, email and linkedin. Do not add official identity proof requirements the customer did not request. Ordinary prospect research uses bounded automatic recovery, domain resolution, alternate searches and independently reviewed final results without requesting human review. Only missing conference details require clarification. Never invent contacts, emails, LinkedIn or domains, and never repeat an unresolved paid lookup. For an explicitly requested provider comparison, contact_provider=treg uses TREG for discovery and email lookup with Apollo excluded; contact_provider=apollo selects Apollo. The provider choice is immutable for the request UUID. Omit contact_provider to retain the default Apollo path. Account-approved spending and authorized customer delivery apply; no prospect outreach. Return the goal ID and keep watching while recovery runs. Reuse the UUID after an uncertain response; never create replacement work. Already named conference speakers requesting email or LinkedIn use kind=company_contacts, person_name, count1 and no event. For several named people, use one individual request per person with a separate UUID; never concatenate names. Named-person requests preserve person_name and count1; no substitute people. employer_locations means employer geography: headquarters or an established operating office; require headquarters when the customer explicitly says so. For companies/startups/agencies in a place, set employer_locations to that place; do not put it in person_locations. person_locations means the person's location, never company headquarters. If personal geography is omitted, assume United States first, disclose that assumption and supply person_locations=["United States"]. Explicit city/country overrides that assumption, and explicit worldwide/global means global. Never infer actual personal geography from this assumption. Preserve conference edition coverage. Do not change saved goals or select a namesake without identity evidence. people outside golden lists are allowed."""
         body = {
             "request": request,
             "idempotency_key": str(idempotency_key),
@@ -593,6 +607,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
         }
         if config_id is not None:
             body["config_id"] = config_id
+        if contact_provider is not None:
+            body['contact_provider']=contact_provider
         if spec is not None:
             body["spec"] = spec.model_dump(exclude_none=True)
         return compact_research_answer(

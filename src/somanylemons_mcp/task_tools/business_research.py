@@ -66,6 +66,7 @@ class BusinessResearchSpec(BaseModel):
     # Caller geography is preserved exactly. US-first assumptions belong in new-request
     # client instructions, not transport defaults; explicit global and conference scope win.
     person_locations: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
+    employer_locations: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30, description="Employer geography, separate from the person's home. For companies/startups/agencies in a location, use this field; do not infer the contact lives there.")] | None = None
     industries: Annotated[list[Annotated[str, Field(min_length=1, max_length=200)]], Field(max_length=30)] | None = None
     employee_range: BusinessEmployeeRange | None = None
     per_company_count: Annotated[int, Field(ge=1, le=50)] | None = None

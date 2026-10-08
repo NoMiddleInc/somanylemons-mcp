@@ -14,6 +14,21 @@ from tests.test_research_progress import VirtualClock
 
 
 class LiveProgressTests(unittest.IsolatedAsyncioTestCase):
+    def test_saved_contacts_visible_when_export_fails_or_research_continues(self):
+        rows = [{"name": "Saved Person", "email": "saved@example.com", "email_status": "guessed"}]
+        for state in ("running", "needs_attention", "completed"):
+            with self.subTest(state=state):
+                answer = server_module.brief_answer({
+                    "state": state, "business_answer": {"coverage": {"saved": 1}},
+                    "contacts": rows, "pagination": {"contacts_total": 30},
+                    "blocker": "business_artifact_failed",
+                })
+                self.assertEqual(answer["contacts"], rows)
+                self.assertEqual(answer["pagination"]["contacts_total"], 30)
+                self.assertIn("Show the available saved contacts now", answer["response_policy"])
+                self.assertIn("never label guessed emails verified", answer["response_policy"])
+                self.assertIn("successive contact_page", answer["response_policy"])
+
     def test_legacy_polling_response_requires_continuation_and_exposes_result_reader(self):
         answer = server_module.brief_answer(compact_research_answer(self.task()))
         self.assertTrue(answer["continue_watching"])
