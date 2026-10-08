@@ -123,6 +123,28 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(instruction, tool.description)
         self.assertIsNone(spec["properties"]["person_locations"]["default"])
 
+    async def test_named_speakers_use_individual_enrichment_with_conference_context(self):
+        from uuid import uuid4
+        tools = {tool.name: tool for tool in await task_schemas()}
+        description = tools['create_business_research_request'].description
+        self.assertIn('one individual request per person', description)
+        self.assertIn('never concatenate names', description.lower())
+        calls = []
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={'data': {'id': 71, 'state': 'queued'}})
+        for name in ('James Benham', 'Niji Sabharwal', 'James Thom', 'Dave Rose', 'Regina Felts'):
+            spec = {'kind': 'company_contacts', 'person_name': name, 'companies': [],
+                    'count': 1, 'all': False, 'fields': ['email', 'linkedin']}
+            question = f'Get email and LinkedIn for {name}, one of the ITC conference speakers.'
+            await invoke_task('create_business_research_request', {
+                'request': question, 'spec': spec, 'idempotency_key': str(uuid4()),
+            }, api_url='https://example.com', api_key='customer', transport=httpx.MockTransport(handler))
+            self.assertEqual(calls[-1]['spec'], spec)
+            self.assertEqual(calls[-1]['request'], question)
+            self.assertEqual(calls[-1]['intake_channel'], 'mcp_v1')
+        self.assertEqual(len({call['idempotency_key'] for call in calls}), 5)
+
     async def test_off_list_variety_preserves_location_identity_and_each_company_scope(self):
         calls = []
         def handler(request):
