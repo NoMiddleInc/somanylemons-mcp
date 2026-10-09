@@ -635,7 +635,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         goal = await api.request("POST", "/api/v1/agent-tasks/quick-search", body=body)
         deadline = time.monotonic() + 210
         while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
             goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
         result = goal.get("quick_search") or {}
         return {
