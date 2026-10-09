@@ -99,7 +99,8 @@ class HostedContactRoutingTests(unittest.TestCase):
             for trigger in ('professional contacts', 'business emails', 'LinkedIn profiles',
                             'any industry or location', 'customer success', 'HR'):
                 self.assertIn(trigger, metadata)
-            self.assertIn('submit the original question before manual web discovery', body.split('\n\n')[1])
+            self.assertIn('call find_people first with the original question verbatim', body.split('\n\n')[1])
+            self.assertIn('submit the original question before manual web discovery', body.split('\n\n')[2])
             self.assertIn('Public web search alone does not establish', body)
             self.assertIn('recorded uncertainty', body)
             self.assertIn('without spec', body)
