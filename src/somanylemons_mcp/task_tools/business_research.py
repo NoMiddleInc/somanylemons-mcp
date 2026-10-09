@@ -18,6 +18,7 @@ BusinessField = Literal[
 ]
 GEOGRAPHY_FIELDS = {"company_city", "company_state", "company_country", "company_location", "raw_address",
                     "person_city", "person_state", "person_country", "person_location", "person_geography_source"}
+CLASSIFICATION_FIELDS = {"industries", "secondary_industries", "company_naics_codes", "company_sic_codes"}
 PROVENANCE_FIELDS = {"scope", "status", "source", "source_url", "source_operation_id", "content_hash",
                      "observed_at", "uncertainty", "reason", "provider", "provider_status"}
 
@@ -135,6 +136,15 @@ def saved_business_answer(task, result, *, contact_page, source_page):
                           if key in row and row[key] is not None})
         projected["geography_fields_truncated"] = any(
             len(str(row[key])) > 500 for key in GEOGRAPHY_FIELDS if key in row and row[key] is not None)
+        classification_truncated = row.get("classification_fields_truncated") is True
+        for field in CLASSIFICATION_FIELDS:
+            values = row.get(field)
+            if isinstance(values, list):
+                selected = [value for value in values if isinstance(value, str) and len(value) <= 200][:20]
+                projected[field] = selected
+                projected[field + "_truncated"] = len(selected) != len(values) or row.get(field + "_truncated") is True
+                classification_truncated |= projected[field + "_truncated"]
+        projected["classification_fields_truncated"] = classification_truncated
         evidence = row.get("evidence_refs") or []
         projected["evidence_refs"] = [{key: str(value)[:300] if key == "quote" else value for key, value in ref.items() if key in {
             "url", "source_url", "content_hash", "observed_at", "quote", "field", "provider",
