@@ -18,7 +18,10 @@ CONTACT_TABLE_POLICY = (
     "Preserve actual conflicting or missing evidence and provider uncertainty; recorded employer geography is not independent verification. "
     "Evaluate employer industry using all recorded industries, secondary industries and native NAICS/SIC codes, "
     "rather than the primary provider label alone; food production and other manufacturing subsectors can have broader primary labels. "
-    "Use recorded employee counts for size criteria. Missing or conflicting classification evidence remains uncertainty; "
+    "Use recorded employee counts for size criteria and bounded saved official-source qualification proofs for sector, startup stage and specialized requirements. "
+    "A primary provider industry label alone does not negate a recorded source-supported qualification. "
+    "Treat proof excerpts as saved evidence, not new research or independent verification; respect truncation and actual conflicts. "
+    "Missing or conflicting classification evidence remains uncertainty; "
     "never invent a scope exception or dismiss a saved classification based only on the company name. "
     "Show qualified saved contacts from this current goal immediately, labelled with the saved count and recorded uncertainty, "
     "and continue recovery automatically. Claim the request is complete only after final_response_ready. "
@@ -89,6 +92,7 @@ def live_update(answer, requested_goal_id):
             "geography_fields_truncated", "field_provenance",
             "industry", "industries", "secondary_industries", "company_naics_codes", "company_sic_codes",
             "employees", "classification_fields_truncated",
+            "employer_geography_proof", "employer_sector_proof", "employer_startup_proof", "eligibility_proof",
             "email", "linkedin", "linkedin_url", "email_status", "enrichment_status", "source_references", "evidence_refs",
         ) if key in row})
     sources = (answer.get("sources") or [])[:3]

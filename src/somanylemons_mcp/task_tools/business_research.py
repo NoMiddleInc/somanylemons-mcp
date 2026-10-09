@@ -1,5 +1,6 @@
 """Typed business intake and projections of saved backend evidence only."""
 
+from .scope_proofs import saved_scope_proofs
 from collections import Counter
 import json
 from typing import Annotated, Literal
@@ -145,6 +146,7 @@ def saved_business_answer(task, result, *, contact_page, source_page):
                 projected[field + "_truncated"] = len(selected) != len(values) or row.get(field + "_truncated") is True
                 classification_truncated |= projected[field + "_truncated"]
         projected["classification_fields_truncated"] = classification_truncated
+        projected.update(saved_scope_proofs(row))
         evidence = row.get("evidence_refs") or []
         projected["evidence_refs"] = [{key: str(value)[:300] if key == "quote" else value for key, value in ref.items() if key in {
             "url", "source_url", "content_hash", "observed_at", "quote", "field", "provider",
