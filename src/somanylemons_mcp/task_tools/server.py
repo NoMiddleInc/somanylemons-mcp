@@ -21,7 +21,7 @@ from .feedback_review import brief_feedback_projection, feedback_projection, rea
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 from .business_research import BusinessResearchSpec, saved_business_answer
-from .live_progress import live_update, contact_table_metadata
+from .live_progress import live_update, contact_table_metadata, watch_response
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=5000)]
@@ -575,10 +575,10 @@ def create_server(api: TaskApiClient) -> FastMCP:
             changed = cursor != update["cursor"]
             remaining = deadline - time.monotonic()
             if changed or not update["continue_watching"] or remaining <= 0:
-                return {**update, "changed": changed, "poll_after_seconds": 5 if update["continue_watching"] else None}
+                return watch_response(update, changed)
             await asyncio.sleep(min(5, remaining))
             if deadline - time.monotonic() < 0.1:
-                return {**update, "changed": False, "poll_after_seconds": 5}
+                return watch_response(update, False)
 
     @server.tool(title="Check research progress", annotations=READ)
     async def wait_for_task(

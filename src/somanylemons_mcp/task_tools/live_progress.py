@@ -184,3 +184,26 @@ def live_update(answer, requested_goal_id):
             if finished else "Explain the actual saved outcome without inventing missing data."
         ),
     }
+
+
+def watch_response(update, changed):
+    """Omit already delivered previews only for a quiet, continuing watch."""
+    response = {
+        **update,
+        "changed": changed,
+        "poll_after_seconds": 5 if update["continue_watching"] else None,
+    }
+    if not changed and update["continue_watching"]:
+        for field in ("findings", "sources", "contact_table_policy"):
+            response.pop(field, None)
+        response.update(
+            payload_mode="unchanged_delta",
+            findings_unchanged=True,
+            sources_unchanged=True,
+            contact_table_policy_unchanged=True,
+            findings_scope=(
+                "Previously delivered findings and sources are unchanged and omitted "
+                "from this delta; their omission does not mean contacts are missing."
+            ),
+        )
+    return response

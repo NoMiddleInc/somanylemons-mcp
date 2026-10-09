@@ -374,3 +374,17 @@ class ContinuationContractTests(unittest.TestCase):
         self.assertFalse(result['final_response_ready'])
         self.assertNotIn('customer_followup_required', result)
         self.assertIsNone(result['next_tool_arguments'])
+
+class WatchDeltaEndpointTests(LiveProgressTests):
+    async def test_quiet_endpoint_omits_previously_delivered_findings(self):
+        task = self.task()
+        result, clock, calls = await self.watch(
+            [task], cursor=self.update(task)["cursor"]
+        )
+        self.assertEqual(clock.elapsed, 25)
+        self.assertEqual(len(calls), 5)
+        self.assertEqual(result["payload_mode"], "unchanged_delta")
+        self.assertTrue(result["findings_unchanged"])
+        self.assertEqual(result["count_basis"], self.update(task)["count_basis"])
+        self.assertNotIn("findings", result)
+        self.assertEqual(result["next_tool_arguments"]["cursor"], result["cursor"])
