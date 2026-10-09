@@ -87,3 +87,21 @@ class FreshProspectRequestPolicyTests(unittest.IsolatedAsyncioTestCase):
             text = (ROOT / path).read_text()
             self.assertIn('otherwise leave person_locations empty', text)
             self.assertNotIn('United States default', text)
+
+
+class HostedContactRoutingTests(unittest.TestCase):
+    def test_general_contact_triggers_route_before_web_only_discovery(self):
+        for path in ('skills/producerspark/SKILL.md',
+                     'plugins/producerspark/skills/producerspark/SKILL.md',
+                     'src/somanylemons_mcp/skills/producerspark/SKILL.md'):
+            text = (ROOT / path).read_text()
+            metadata, body = text.split('---', 2)[1:]
+            for trigger in ('professional contacts', 'business emails', 'LinkedIn profiles',
+                            'any industry or location', 'customer success', 'HR'):
+                self.assertIn(trigger, metadata)
+            self.assertIn('submit the original question before manual web discovery', body.split('\n\n')[1])
+            self.assertIn('Public web search alone does not establish', body)
+            self.assertIn('recorded uncertainty', body)
+            self.assertIn('without spec', body)
+            self.assertIn('Requested counts never expand configured spending authority', body)
+            self.assertIn('Unfinished work and uncertain provider effects remain open', body)
