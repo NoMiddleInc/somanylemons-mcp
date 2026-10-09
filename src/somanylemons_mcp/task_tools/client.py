@@ -13,6 +13,25 @@ class TaskApiError(RuntimeError):
     """A safe error suitable for an MCP tool response."""
 
 
+def upgrade_required(error: "TaskApiError") -> dict[str, Any] | None:
+    """A free-trial or credit hold (HTTP 402) as a result the assistant can relay and act on."""
+    text = str(error)
+    marker = "HTTP 402: "
+    if marker not in text:
+        return None
+    try:
+        detail = json.loads(text.split(marker, 1)[1])
+    except ValueError:
+        return None
+    if not isinstance(detail, dict) or not detail.get("upgrade_url"):
+        return None
+    return {
+        "status": "upgrade_required",
+        "message": str(detail.get("message") or ""),
+        "upgrade_url": str(detail["upgrade_url"]),
+    }
+
+
 @dataclass(frozen=True)
 class TaskApiConfig:
     origin: str

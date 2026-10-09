@@ -147,6 +147,37 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[-1]['intake_channel'], 'mcp_v1')
         self.assertEqual(len({call['idempotency_key'] for call in calls}), 5)
 
+    async def test_find_people_turns_a_trial_or_credit_hold_into_an_upgrade_result(self):
+        detail = {"code": "trial_exhausted", "message": "You have used your 15 free prospects. Choose a plan to keep finding qualified prospects.",
+                  "upgrade_url": "https://producerspark.com/pricing"}
+
+        def handler(request):
+            return httpx.Response(402, json={"detail": detail})
+
+        result = rendered(await invoke_task(
+            "find_people", {"request": "Find 1 CFO in Boston.", "idempotency_key": "22222222-2222-4222-8222-222222222222"},
+            api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler)))
+        self.assertEqual(result["status"], "upgrade_required")
+        self.assertEqual(result["upgrade_url"], "https://producerspark.com/pricing")
+        self.assertIn("15 free prospects", result["message"])
+        self.assertEqual(result["rows"], [])
+
+    async def test_find_people_passes_the_remaining_free_prospects_through(self):
+        from unittest.mock import AsyncMock, patch
+        credits = {"plan": "free_trial", "remaining": 14, "exhausted": False}
+
+        def handler(request):
+            if request.method == "POST":
+                return httpx.Response(200, json={"data": {"id": 7, "state": "queued"}})
+            return httpx.Response(200, json={"data": {"id": 7, "state": "completed", "quick_search": {
+                "rows": [{"name": "Pat Example"}], "coverage": {"returned": 1}, "credits": credits, "delivery": {"status": "sent"}}}})
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = rendered(await invoke_task(
+                "find_people", {"request": "Find 1 CFO in Boston.", "idempotency_key": "22222222-2222-4222-8222-222222222222"},
+                api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler)))
+        self.assertEqual(result["credits"], credits)
+
     async def test_find_people_creates_one_task_then_returns_its_rows_and_email_status(self):
         from unittest.mock import AsyncMock, patch
         calls = []

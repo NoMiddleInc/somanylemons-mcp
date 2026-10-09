@@ -16,7 +16,7 @@ from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import ResourceLink, ToolAnnotations
 from pydantic import BaseModel, Field, JsonValue
 
-from .client import TaskApiClient, TaskApiConfig, TaskApiError
+from .client import TaskApiClient, TaskApiConfig, TaskApiError, upgrade_required
 from .feedback_review import brief_feedback_projection, feedback_projection, read_feedback_attachment_resource
 from .answer_navigation import bounded_examples_and_artifacts, list_task_navigation
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
@@ -628,11 +628,17 @@ def create_server(api: TaskApiClient) -> FastMCP:
         idempotency_key: UUID | None = None,
         config_id: PositiveId | None = None,
     ) -> dict:
-        """Fast people search and the first choice for find-people requests. Pass the original request verbatim. It runs as its own task on the account, returns the contacts in this call when ready (usually 20 to 90 seconds) and emails the same results to the account owner. Rows carry name, title, company, business email with Apollo verification status, LinkedIn, location, fit, why and anything unverified; coverage reports requested versus returned and named employers Apollo could not answer. Up to 200 contacts, including N people at each named company. If status is still_running, call again with the same idempotency_key. No prospect outreach."""
+        """Fast people search and the first choice for find-people requests. Pass the original request verbatim. It runs as its own task on the account, returns the contacts in this call when ready (usually 20 to 90 seconds) and emails the same results to the account owner. Rows carry name, title, company, business email with Apollo verification status, LinkedIn, location, fit, why and anything unverified; coverage reports requested versus returned and named employers Apollo could not answer. Up to 200 contacts, including N people at each named company. If status is still_running, call again with the same idempotency_key. If status is upgrade_required, credits.exhausted is true or coverage.held_for_credits is above 0, tell the user plainly that their free prospects (or credits) are used up and give them upgrade_url so they can choose a plan; never retry the search or work around it. On a free trial, after showing rows, tell them how many free prospects remain (credits.remaining). No prospect outreach."""
         body = {"request": request, "idempotency_key": str(idempotency_key or uuid4())}
         if config_id is not None:
             body["config_id"] = config_id
-        goal = await api.request("POST", "/api/v1/agent-tasks/quick-search", body=body)
+        try:
+            goal = await api.request("POST", "/api/v1/agent-tasks/quick-search", body=body)
+        except TaskApiError as error:
+            held = upgrade_required(error)
+            if held is None:
+                raise
+            return {**held, "idempotency_key": body["idempotency_key"], "rows": [], "coverage": {}}
         deadline = time.monotonic() + 210
         while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
             await asyncio.sleep(1)
@@ -651,6 +657,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
             "rows": result.get("rows", []),
             "coverage": result.get("coverage", {}),
+            "credits": result.get("credits"),
             "email_delivery": result.get("delivery", {}),
         }
 
