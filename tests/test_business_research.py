@@ -169,6 +169,17 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search"), ("GET", "/api/v1/agent-tasks/7")])
         self.assertEqual((result["goal_id"], result["status"], result["rows"]), (7, "completed", rows))
         self.assertEqual(result["email_delivery"], {"status": "sent"})
+        self.assertEqual(result["blocked_reason"], "")
+
+        def blocked(request):
+            return httpx.Response(200, json={"data": {"id": 8, "state": "needs_attention", "quick_search": {"stage": "searching"},
+                "tasks": [{"blocked_reason": "handler_error:ApolloBillableBudgetExceeded"}]}})
+
+        held = rendered(await invoke_task(
+            "find_people", {"request": question, "idempotency_key": key}, api_url="https://example.com",
+            api_key="customer", transport=httpx.MockTransport(blocked)))
+        self.assertEqual((held["status"], held["rows"]), ("needs_attention", []))
+        self.assertIn("Apollo contact-lookup allowance is used up", held["blocked_reason"])
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(tools["find_people"].inputSchema["required"], ["request"])
         with self.assertRaises(ToolError):

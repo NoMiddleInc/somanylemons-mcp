@@ -638,7 +638,14 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await asyncio.sleep(1)
             goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
         result = goal.get("quick_search") or {}
+        blocked = next((task.get("blocked_reason") for task in goal.get("tasks") or [] if task.get("blocked_reason")), "")
         return {
+            "blocked_reason": (
+                "The account's Apollo contact-lookup allowance is used up. No contacts were fetched; "
+                "an operator needs to approve more lookups, then run the search again."
+                if "ApolloBillableBudgetExceeded" in blocked
+                else blocked
+            ),
             "goal_id": goal["id"],
             "idempotency_key": body["idempotency_key"],
             "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
