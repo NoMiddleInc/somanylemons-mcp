@@ -147,6 +147,26 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[-1]['intake_channel'], 'mcp_v1')
         self.assertEqual(len({call['idempotency_key'] for call in calls}), 5)
 
+    async def test_find_people_posts_the_original_request_and_returns_rows_in_one_call(self):
+        calls = []
+        rows = [{"name": "Pat Example", "email": "pat@example.com", "unverified": []}]
+
+        def handler(request):
+            calls.append((request.method, request.url.path, json.loads(request.content)))
+            return httpx.Response(200, json={"data": {"rows": rows, "coverage": {"returned": 1}}})
+
+        question = "Find 1 commercial insurance producer based in Virginia."
+        result = rendered(await invoke_task(
+            "find_people", {"request": question}, api_url="https://example.com",
+            api_key="customer", transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search", {"request": question})])
+        self.assertEqual(result["rows"], rows)
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertEqual(tools["find_people"].inputSchema["required"], ["request"])
+        with self.assertRaises(ToolError):
+            await invoke_task("find_people", {"request": ""}, api_url="https://example.com",
+                              api_key="customer", transport=httpx.MockTransport(handler))
+
     async def test_off_list_variety_preserves_location_identity_and_each_company_scope(self):
         calls = []
         def handler(request):

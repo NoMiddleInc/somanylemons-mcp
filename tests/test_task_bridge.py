@@ -15,7 +15,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
   self.assertIn('source_urls',task['conference_answer']['event'])
  async def test_task_schema_keeps_typed_conference_and_authority(self):
   tools={t.name:t for t in await task_schemas()}
-  self.assertEqual(len(tools),27)
+  self.assertEqual(len(tools),28)
   self.assertIn("watch_research",tools)
   self.assertIn('create_research_request',tools)
   self.assertIn('create_conference_research_request',tools)
