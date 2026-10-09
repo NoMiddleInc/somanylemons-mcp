@@ -16,6 +16,7 @@ CONTACT_TABLE_POLICY = (
     "Evaluate employer geography using recorded company geography, and personal geography using recorded person geography; "
     "generic location/city/state can describe the person and must not replace employer evidence. "
     "Preserve actual conflicting or missing evidence and provider uncertainty; recorded employer geography is not independent verification. "
+    "When the backend binds an email and LinkedIn URL to the same validated provider contact, a different email local part or profile slug alone does not establish an identity conflict or require customer verification. Preserve explicit recorded conflicts and uncertainty; do not claim fresh identity or deliverability verification. "
     "Evaluate employer industry using all recorded industries, secondary industries and native NAICS/SIC codes, "
     "rather than the primary provider label alone; food production and other manufacturing subsectors can have broader primary labels. "
     "Use recorded employee counts for size criteria and bounded saved official-source qualification proofs for sector, startup stage and specialized requirements. "
@@ -162,6 +163,12 @@ def live_update(answer, requested_goal_id):
         **contact_table_metadata(),
         "monitor_status": "answer_available" if contact_ready else "finished" if finished else "needs_attention" if stop else "watching",
         "continue_watching": not stop, "suggestions": suggestions,
+        **({"response_phase": "in_progress", "monitoring_action": "call_next_tool",
+            "backend_action_role": "next_action and stage describe backend scheduling, not a customer command; the client action is next_tool with next_tool_arguments.",
+            **({"customer_followup_required": False}
+               if business and not conference and spec.get("kind") != "conference_speakers" else {}),
+            "continuation_reason": "Research remains active. Unchanged progress, zero saved contacts, elapsed time and repeated poll timeouts do not establish a final outcome or require a customer resume message."}
+           if not stop else {}),
         "next_tool": "watch_research" if not stop else None,
         "next_tool_arguments": {
             "goal_id": requested_goal_id, "cursor": cursor, "timeout_seconds": 25,

@@ -309,3 +309,68 @@ class HelpfulBlockerTests(unittest.TestCase):
         self.assertFalse(result["continue_watching"])
         self.assertIn("reuse this research task", " ".join(result["suggestions"]))
         self.assertNotIn("email campaign", " ".join(result["suggestions"]))
+
+
+class ContinuationContractTests(unittest.TestCase):
+    def test_unchanged_active_zero_results_preserve_next_call_without_customer_followup(self):
+        for state in ('queued', 'running', 'waiting_provider'):
+            answer = {'id': 288, 'state': state, 'fulfillment': 'unknown',
+                      'business_answer': {'counts': {'contacts': 0, 'requested': 10}},
+                      'updated_at': '2026-10-09T00:00:00Z'}
+            first = live_update(answer, 288)
+            for _ in range(40):
+                current = live_update(answer, 288)
+                self.assertEqual(current['cursor'], first['cursor'])
+                self.assertTrue(current['continue_watching'])
+                self.assertFalse(current['final_response_ready'])
+                self.assertFalse(current['customer_followup_required'])
+                self.assertEqual(current['monitoring_action'], 'call_next_tool')
+                self.assertEqual(current['next_tool_arguments']['goal_id'], 288)
+                self.assertEqual(current['next_tool_arguments']['timeout_seconds'], 25)
+                self.assertEqual(current['next_tool_arguments']['cursor'], first['cursor'])
+
+    def test_terminal_outcomes_do_not_receive_active_continuation_metadata(self):
+        for state in ('completed', 'cancelled', 'paused'):
+            result = live_update({'id': 288, 'state': state}, 288)
+            self.assertFalse(result['continue_watching'])
+            self.assertNotIn('customer_followup_required', result)
+            self.assertNotIn('monitoring_action', result)
+
+
+    def test_validated_contact_slug_difference_preserves_values_and_uncertainty(self):
+        answer = {'id': 287, 'state': 'running', 'fulfillment': 'unknown',
+                  'business_answer': {'counts': {'contacts': 1, 'requested': 5}},
+                  'contacts': [{'name': 'Tiffany Payne', 'company': 'Observed employer',
+                                'title': 'Sales Director', 'email': 'tthompson@example.com',
+                                'linkedin': 'https://linkedin.com/in/tiffany-thompson-renee',
+                                'email_status': 'provider_reported'}]}
+        result = live_update(answer, 287)
+        self.assertEqual(result['findings'][0]['email'], answer['contacts'][0]['email'])
+        self.assertEqual(result['findings'][0]['linkedin'], answer['contacts'][0]['linkedin'])
+        self.assertEqual(result['findings'][0]['email_status'], 'provider_reported')
+        self.assertIn('slug alone does not establish an identity conflict', result['contact_table_policy'])
+        self.assertIn('Preserve explicit recorded conflicts', result['contact_table_policy'])
+        self.assertFalse(result['final_response_ready'])
+
+
+    def test_actual_running_scheduler_execute_is_not_client_or_customer_action(self):
+        answer = {'id': 288, 'state': 'running', 'fulfillment': 'unknown',
+                  'current_step': 'Complete next step', 'next_action': 'execute',
+                  'business_answer': {'counts': {'contacts': 0, 'requested': 10}}}
+        result = live_update(answer, 288)
+        self.assertEqual(result['next_action'], 'execute')
+        self.assertEqual(result['stage'], 'Complete next step')
+        self.assertEqual(result['next_tool'], 'watch_research')
+        self.assertEqual(result['monitoring_action'], 'call_next_tool')
+        self.assertFalse(result['customer_followup_required'])
+        self.assertFalse(result['final_response_ready'])
+        self.assertIn('not a customer command', result['backend_action_role'])
+
+    def test_conference_clarification_retains_exception_and_no_no_followup_flag(self):
+        result = live_update({'id': 300, 'state': 'waiting_customer',
+                              'conference_answer': {'spec': {'kind': 'conference_speakers'}},
+                              'blocker': {'reason': 'Missing conference edition'}}, 300)
+        self.assertFalse(result['continue_watching'])
+        self.assertFalse(result['final_response_ready'])
+        self.assertNotIn('customer_followup_required', result)
+        self.assertIsNone(result['next_tool_arguments'])
