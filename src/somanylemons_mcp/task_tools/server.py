@@ -9,7 +9,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import datetime
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.lowlevel.helper_types import ReadResourceContents
@@ -403,6 +403,9 @@ class TaskFastMCP(FastMCP):
         return await super().read_resource(uri)
 
 
+FINISHED_SEARCH_STATES = {"completed", "needs_attention", "cancelled"}
+
+
 def create_server(api: TaskApiClient) -> FastMCP:
     server = TaskFastMCP(
         api,
@@ -620,14 +623,29 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await asyncio.sleep(min(5, remaining))
 
     @server.tool(annotations=WRITE)
-    async def find_people(request: Annotated[str, Field(min_length=1, max_length=10000)]) -> dict:
-        """Fast people search and the first choice for find-people requests. Pass the original request verbatim and get contacts back in this call (about 20 to 90 seconds): name, title, company, business email with Apollo verification status, LinkedIn, location, fit and why. Each row lists anything unverified; coverage reports requested versus returned and named employers Apollo could not answer. Handles up to 200 contacts, including N people at each named company. Saved verification is not a fresh deliverability check. No prospect outreach."""
-        return await api.request(
-            "POST",
-            "/api/v1/agent-tasks/quick-search",
-            body={"request": request},
-            timeout_seconds=240.0,
-        )
+    async def find_people(
+        request: Annotated[str, Field(min_length=1, max_length=10000)],
+        idempotency_key: UUID | None = None,
+        config_id: PositiveId | None = None,
+    ) -> dict:
+        """Fast people search and the first choice for find-people requests. Pass the original request verbatim. It runs as its own task on the account, returns the contacts in this call when ready (usually 20 to 90 seconds) and emails the same results to the account owner. Rows carry name, title, company, business email with Apollo verification status, LinkedIn, location, fit, why and anything unverified; coverage reports requested versus returned and named employers Apollo could not answer. Up to 200 contacts, including N people at each named company. If status is still_running, call again with the same idempotency_key. No prospect outreach."""
+        body = {"request": request, "idempotency_key": str(idempotency_key or uuid4())}
+        if config_id is not None:
+            body["config_id"] = config_id
+        goal = await api.request("POST", "/api/v1/agent-tasks/quick-search", body=body)
+        deadline = time.monotonic() + 210
+        while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
+            await asyncio.sleep(3)
+            goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
+        result = goal.get("quick_search") or {}
+        return {
+            "goal_id": goal["id"],
+            "idempotency_key": body["idempotency_key"],
+            "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
+            "rows": result.get("rows", []),
+            "coverage": result.get("coverage", {}),
+            "email_delivery": result.get("delivery", {}),
+        }
 
     @server.tool(annotations=WRITE)
     async def create_business_research_request(

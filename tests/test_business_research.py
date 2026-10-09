@@ -147,20 +147,28 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[-1]['intake_channel'], 'mcp_v1')
         self.assertEqual(len({call['idempotency_key'] for call in calls}), 5)
 
-    async def test_find_people_posts_the_original_request_and_returns_rows_in_one_call(self):
+    async def test_find_people_creates_one_task_then_returns_its_rows_and_email_status(self):
+        from unittest.mock import AsyncMock, patch
         calls = []
         rows = [{"name": "Pat Example", "email": "pat@example.com", "unverified": []}]
+        key = "22222222-2222-4222-8222-222222222222"
+        question = "Find 1 commercial insurance producer based in Virginia."
 
         def handler(request):
-            calls.append((request.method, request.url.path, json.loads(request.content)))
-            return httpx.Response(200, json={"data": {"rows": rows, "coverage": {"returned": 1}}})
+            calls.append((request.method, request.url.path))
+            if request.method == "POST":
+                self.assertEqual(json.loads(request.content), {"request": question, "idempotency_key": key})
+                return httpx.Response(200, json={"data": {"id": 7, "state": "queued"}})
+            return httpx.Response(200, json={"data": {"id": 7, "state": "completed", "quick_search": {
+                "rows": rows, "coverage": {"returned": 1}, "delivery": {"status": "sent"}}}})
 
-        question = "Find 1 commercial insurance producer based in Virginia."
-        result = rendered(await invoke_task(
-            "find_people", {"request": question}, api_url="https://example.com",
-            api_key="customer", transport=httpx.MockTransport(handler)))
-        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search", {"request": question})])
-        self.assertEqual(result["rows"], rows)
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = rendered(await invoke_task(
+                "find_people", {"request": question, "idempotency_key": key}, api_url="https://example.com",
+                api_key="customer", transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search"), ("GET", "/api/v1/agent-tasks/7")])
+        self.assertEqual((result["goal_id"], result["status"], result["rows"]), (7, "completed", rows))
+        self.assertEqual(result["email_delivery"], {"status": "sent"})
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(tools["find_people"].inputSchema["required"], ["request"])
         with self.assertRaises(ToolError):
