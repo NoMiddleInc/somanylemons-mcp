@@ -22,7 +22,7 @@ No server-side mutable customer cache or detached task is created. Existing auth
 
 ## Installation and rollout
 
-The plugin ships `skills/producerspark/SKILL.md`; the wheel contains the matching packaged skill. The existing installer installs the workflow alongside `/lemons`. Local plugin preview: `claude --plugin-dir /absolute/path/to/spark-mcp` with the existing SML_API_KEY configured outside chat. Plugin skill commands are namespaced by Claude; the installed user skill is `/producerspark`.
+The plugin ships `skills/producerspark/SKILL.md`; the wheel contains the matching packaged skill. The installer installs the workflow. Local plugin preview: `claude --plugin-dir /absolute/path/to/spark-mcp` with the existing SML_API_KEY configured outside chat. Plugin skill commands are namespaced by Claude; the installed user skill is `/producerspark`.
 
 Deploy the updated hosted MCP before customers use the new watch tool. This change does not deploy any service or start customer research. Existing clients can continue using `wait_for_task`.
 

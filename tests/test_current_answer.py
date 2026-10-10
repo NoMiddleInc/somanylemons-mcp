@@ -227,7 +227,7 @@ class CurrentAnswerTests(unittest.IsolatedAsyncioTestCase):
         for method in ("get_task", "get_research_answer", "wait_for_task"):
             self.assertFalse(tools[method].inputSchema["properties"]["historical_snapshot"]["default"])
         with patch.object(hosted, "_request_identity", return_value={"research_only": False}):
-            self.assertEqual(len(await hosted.list_tools()), 57)
+            self.assertEqual(len(await hosted.list_tools()), 28)
         self.assertNotIn("get_task_conversation", tools)
         for text in ("that exact saved file", "Missing verification/enrichment clocks stay unknown", "never infer a person's review or verification date", "historical_snapshot=true", "does not prohibit already-requested"):
             self.assertIn(text, hosted.server.instructions)

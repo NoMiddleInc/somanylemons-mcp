@@ -327,7 +327,7 @@ class NavigationToolTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             hosted, "_request_identity", return_value={"research_only": False}
         ):
-            self.assertEqual(len(await hosted.list_tools()), 57)
+            self.assertEqual(len(await hosted.list_tools()), 28)
         self.assertIn("current_answer_goal_id", hosted.server.instructions)
         self.assertIn(
             "missing_email_enrichment_status_counts_by_person",

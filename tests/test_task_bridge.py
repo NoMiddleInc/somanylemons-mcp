@@ -493,7 +493,7 @@ class InitializeInstructionsTests(unittest.TestCase):
   self.assertIn('recorded_email_provenance_groups',instructions)
   self.assertIn('common task/provider lookup clock is not the date of every email',instructions)
   self.assertIn('must not replace those final status counts',instructions)
-  self.assertIn('content tools according to their schemas',instructions)
+  self.assertNotIn('content tools',instructions)
   self.assertIn('provider_credit_budget is the current shared lookup authority',instructions)
   self.assertIn('an earlier monthly quota blocker does not establish today',instructions)
   self.assertIn('Missing allowance fields are unknown, never zero',instructions)

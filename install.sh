@@ -17,10 +17,7 @@ echo "  🍋 SoManyLemons MCP Installer"
 echo "  ─────────────────────────────"
 echo ""
 
-# ── Step 1: Install /lemons command ──────────────────────────────────────────
-mkdir -p ~/.claude/commands
-curl -fsSL "$REPO/commands/lemons.md" -o ~/.claude/commands/lemons.md
-echo "  ✓ Installed /lemons command"
+# ── Step 1: Install the /producerspark skill ─────────────────────────────────
 mkdir -p ~/.claude/skills/producerspark
 curl -fsSL "$REPO/skills/producerspark/SKILL.md" -o ~/.claude/skills/producerspark/SKILL.md
 echo "  ✓ Installed /producerspark live prospect workflow"
@@ -72,5 +69,5 @@ else
 fi
 
 echo ""
-echo "  🍋 Done! Restart Claude Code and type /producerspark or /lemons"
+echo "  🍋 Done! Restart Claude Code and type /producerspark"
 echo ""

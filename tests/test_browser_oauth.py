@@ -122,7 +122,7 @@ class BrowserAuthTests(unittest.IsolatedAsyncioTestCase):
             tools = await server.list_tools()
             self.assertEqual({t.name for t in tools}, server.TASK_TOOL_NAMES)
             denied = await server.call_tool("generate_content", {"topic": "test"})
-            self.assertIn("research tools only", denied[0].text)
+            self.assertIn("Unknown tool", denied[0].text)
         finally:
             server._research_only.reset(token)
         self.assertIn("get_task", server.RESEARCH_INSTRUCTIONS)
