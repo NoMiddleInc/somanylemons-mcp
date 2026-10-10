@@ -136,7 +136,7 @@ class TaskApiClient:
             detail = detail.replace(self.config.token, "[redacted]")[:1000]
             guidance = (
                 " Refresh the task and use its current version before retrying."
-                if response.status_code == 409
+                if response.status_code == 409 and "/agent-tools/" not in path
                 else ""
             )
             raise TaskApiError(
