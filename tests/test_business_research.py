@@ -210,7 +210,8 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             "find_people", {"request": question, "idempotency_key": key}, api_url="https://example.com",
             api_key="customer", transport=httpx.MockTransport(blocked)))
         self.assertEqual((held["status"], held["rows"]), ("needs_attention", []))
-        self.assertIn("Apollo contact-lookup allowance is used up", held["blocked_reason"])
+        self.assertIn("The account's contact-lookup allowance is used up", held["blocked_reason"])
+        self.assertNotIn("Apollo", held["blocked_reason"])
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(tools["find_people"].inputSchema["required"], ["request"])
         with self.assertRaises(ToolError):

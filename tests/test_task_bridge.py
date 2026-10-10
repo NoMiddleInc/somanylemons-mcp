@@ -182,7 +182,7 @@ class ResearchBlockerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(answer["blocker"], {
                     "party": "operator",
                     "reason": (
-                        "ProducerSpark approval needed to extend the shared Apollo allowance of "
+                        "ProducerSpark approval needed to extend the shared lookup allowance of "
                         "2000 conservative billable lookup attempts. No provider request was sent."
                     ),
                 })
@@ -268,6 +268,9 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
             "accounting": "conservative attempted billable lookup units, not actual invoiced credits",
         }
 
+    def customer_budget(self):
+        return {**self.canonical_budget(), "scope": "shared contact database account"}
+
     async def invoke_response(self, name, arguments, budget, state="needs_attention"):
         calls = []
         task = {
@@ -329,7 +332,8 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
                     "provider_balance": "private account balance",
                     "goal_reserved_credits": 1,
                 })
-                self.assertEqual(answer["apollo_credit_budget"], budget)
+                self.assertEqual(answer["provider_credit_budget"], self.customer_budget())
+                self.assertNotIn("apollo", json.dumps(answer).casefold())
                 self.assertEqual(answer["state"], "needs_attention")
                 self.assertIn("0 credits remain", answer["blocker"]["reason"])
                 self.assertEqual(answer["progress"], {"completed": 0, "total": 4})
@@ -358,7 +362,8 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
                 answer, request = await self.invoke_response(name, arguments, {
                     **budget, "operator_diagnostic": "https://internal.example/private",
                 }, state="queued")
-                self.assertEqual(answer["apollo_credit_budget"], budget)
+                self.assertEqual(answer["provider_credit_budget"], self.customer_budget())
+                self.assertNotIn("apollo", json.dumps(answer).casefold())
                 self.assertEqual(answer["state"], "queued")
                 self.assertEqual(answer["version"], 2)
                 self.assertEqual(request.method, "POST")
@@ -489,7 +494,7 @@ class InitializeInstructionsTests(unittest.TestCase):
   self.assertIn('common task/provider lookup clock is not the date of every email',instructions)
   self.assertIn('must not replace those final status counts',instructions)
   self.assertIn('content tools according to their schemas',instructions)
-  self.assertIn('apollo_credit_budget is current shared Apollo lookup authority',instructions)
+  self.assertIn('provider_credit_budget is the current shared lookup authority',instructions)
   self.assertIn('an earlier monthly quota blocker does not establish today',instructions)
   self.assertIn('Missing allowance fields are unknown, never zero',instructions)
   self.assertIn('not provider balance or invoiced charges',instructions)
