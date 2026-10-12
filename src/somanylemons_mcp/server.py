@@ -70,12 +70,24 @@ from .task_bridge import SCHEMA_SERVER
 RESEARCH_SKILL = files("somanylemons_mcp").joinpath("skills/producerspark/SKILL.md").read_text()
 RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 
+# Clients keep only the first couple of thousand characters of the instructions, so the part
+# every conversation needs comes first and stays short.
+OVERVIEW = (
+    "ProducerSpark runs this account's agents. People and contacts: call find_people first with "
+    "the request verbatim. Posts: list_posts, create_post, update_post, schedule_post. Recordings "
+    "and clips: list_recordings, change_clip_design, update_clip_text. Use real ids from a list "
+    "call, never a guessed one. Publishing, scheduling, deleting a post and removing a recording "
+    "never happen on the first call: the result has needs_confirmation and will_happen. Show "
+    "will_happen to the user word for word, wait for a clear yes, then repeat the call with its "
+    "confirmation value. When a result has acting_in_account, say whose account it is."
+)
+
 server = Server(
     "ProducerSpark",
     website_url="https://producerspark.com",
     icons=[Icon(src="https://producerspark.com/images/agents/prospect-custodian-v2.png", mimeType="image/png")],
     instructions=(
-        RESEARCH_INSTRUCTIONS + "\n\n"
+        OVERVIEW + "\n\n" + RESEARCH_INSTRUCTIONS + "\n\n"
         "No research task authorizes content publishing or outreach. "
         + (SCHEMA_SERVER.instructions or "")
     ),

@@ -87,6 +87,52 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[0].url.path, f"/api/v1/agent-tasks/agent-tools/{name}")
             self.assertEqual(json.loads(calls[0].content), arguments)
 
+    async def test_every_other_write_tool_reaches_its_own_action(self):
+        for name, arguments in (
+            ("unschedule_post", {"post_id": 5, "idempotency_key": KEY}),
+            ("copy_post_to_network", {"post_id": 5, "network": "twitter", "idempotency_key": KEY}),
+            ("recut_recording", {"recording_id": "abc", "instruction": "Only the pricing part", "idempotency_key": KEY}),
+            ("retry_recording", {"recording_id": "abc", "idempotency_key": KEY}),
+            ("set_default_recording_design", {"design_id": 3, "idempotency_key": KEY}),
+            ("send_clip_to_scheduling", {"clip_id": 9, "idempotency_key": KEY}),
+        ):
+            calls, _ = await self._call(name, arguments)
+            self.assertEqual(calls[0].url.path, f"/api/v1/agent-tasks/agent-tools/{name}")
+            self.assertEqual(json.loads(calls[0].content), arguments)
+
+    async def test_publishing_shows_what_will_happen_then_sends_the_users_yes(self):
+        waiting = {"data": {"needs_confirmation": True, "done": False, "confirmation": "ab12cd34ef56ab78",
+                            "will_happen": "Post 5 will be published to X (@acme) IMMEDIATELY."}}
+        calls, result = await self._call("publish_post_now", {"post_id": 5, "idempotency_key": KEY}, waiting)
+        self.assertEqual(json.loads(calls[0].content), {"post_id": 5, "idempotency_key": KEY})
+        self.assertIn("Post 5 will be published to X (@acme) IMMEDIATELY.", str(result))
+        self.assertIn("ab12cd34ef56ab78", str(result))
+
+        calls, _ = await self._call("publish_post_now", {"post_id": 5, "idempotency_key": KEY, "confirmation": "ab12cd34ef56ab78"})
+        self.assertEqual(json.loads(calls[0].content), {"post_id": 5, "idempotency_key": KEY, "confirmation": "ab12cd34ef56ab78"})
+
+    async def test_only_actions_that_post_or_remove_take_a_confirmation(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
+        takes = {name for name in AGENT_TOOL_NAMES if "confirmation" in tools[name].inputSchema["properties"]}
+        self.assertEqual(takes, {"create_post", "schedule_post", "publish_post_now", "delete_post", "remove_recording"})
+        for name in takes:
+            self.assertIn("will_happen", tools[name].description, name)
+
+    async def test_teammate_can_name_the_account_on_any_tool(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
+        for name in AGENT_TOOL_NAMES:
+            self.assertIn("account_id", tools[name].inputSchema["properties"], name)
+            self.assertNotIn("account_id", tools[name].inputSchema.get("required", []), name)
+        calls, _ = await self._call("list_posts", {"account_id": 10}, {"data": {"posts": [], "acting_in_account": "ben@example.com"}})
+        self.assertEqual(json.loads(calls[0].content), {"page": 1, "account_id": 10})
+
+    async def test_posting_rules_survive_a_client_that_keeps_only_the_start_of_the_instructions(self):
+        from somanylemons_mcp import server
+        kept = server.server.instructions[:1500]
+        for text in ("find_people", "list_posts", "list_recordings", "needs_confirmation", "will_happen", "clear yes"):
+            self.assertIn(text, kept)
+        self.assertLess(len(server.OVERVIEW), 800)
+
 
 if __name__ == "__main__":
     unittest.main()
