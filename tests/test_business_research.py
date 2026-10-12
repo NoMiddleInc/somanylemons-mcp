@@ -219,6 +219,24 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("coverage.deep_search", tools["find_people"].description)
         self.assertNotIn("Apollo", tools["deep_search"].description)
 
+    async def test_declining_a_deep_search_emails_the_first_results_without_searching(self):
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, request.url.path, json.loads(request.content)))
+            return httpx.Response(200, json={"data": {"id": 7, "state": "completed", "quick_search": {
+                "rows": [], "delivery": {"status": "sent", "deep_search": "declined", "attachment": True}}}})
+
+        result = rendered(await invoke_task(
+            "deep_search", {"goal_id": 7, "decline": True}, api_url="https://example.com", api_key="customer",
+            transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/7/deep-search", {"decline": True})])
+        self.assertEqual((result["status"], result["source_goal_id"], result["rows"]), ("results_emailed", 7, []))
+        self.assertEqual(result["email_delivery"]["status"], "sent")
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertIn("decline=true", tools["deep_search"].description)
+        self.assertEqual(tools["deep_search"].inputSchema["required"], ["goal_id"])
+
     async def test_deep_search_reports_a_running_search_and_a_credit_hold_without_retrying(self):
         from unittest.mock import AsyncMock, patch
 
