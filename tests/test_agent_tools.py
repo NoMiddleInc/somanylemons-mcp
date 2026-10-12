@@ -20,10 +20,10 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_every_tool_is_offered_with_honest_annotations(self):
         tools = {tool.name: tool for tool in await task_schemas()}
-        self.assertEqual(len(AGENT_TOOL_NAMES), 21)
+        self.assertEqual(len(AGENT_TOOL_NAMES), 23)
         self.assertTrue(AGENT_TOOL_NAMES <= TASK_TOOL_NAMES)
         self.assertTrue(AGENT_TOOL_NAMES <= set(tools))
-        read_only = {"get_posting_overview", "list_posts", "get_post", "list_recordings", "get_recording", "list_recording_designs"}
+        read_only = {"get_posting_overview", "list_posts", "get_post", "list_recordings", "get_recording", "list_recording_designs", "get_email_sequence"}
         destructive = {"publish_post_now", "delete_post", "remove_recording"}
         for name in AGENT_TOOL_NAMES:
             tool = tools[name]
@@ -95,6 +95,7 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             ("retry_recording", {"recording_id": "abc", "idempotency_key": KEY}),
             ("set_default_recording_design", {"design_id": 3, "idempotency_key": KEY}),
             ("send_clip_to_scheduling", {"clip_id": 9, "idempotency_key": KEY}),
+            ("pause_email_agent", {"campaign_id": 44, "idempotency_key": KEY}),
         ):
             calls, _ = await self._call(name, arguments)
             self.assertEqual(calls[0].url.path, f"/api/v1/agent-tasks/agent-tools/{name}")
@@ -132,6 +133,11 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
         for text in ("find_people", "list_posts", "list_recordings", "needs_confirmation", "will_happen", "clear yes"):
             self.assertIn(text, kept)
         self.assertLess(len(server.OVERVIEW), 800)
+
+    async def test_nothing_here_can_start_email_sending(self):
+        tools = {tool.name for tool in await task_schemas()}
+        self.assertIn("pause_email_agent", tools)
+        self.assertFalse({name for name in tools if "start_email" in name or "enroll" in name})
 
 
 if __name__ == "__main__":
