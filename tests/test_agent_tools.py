@@ -115,7 +115,7 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_actions_that_post_or_remove_take_a_confirmation(self):
         tools = {tool.name: tool for tool in await task_schemas()}
         takes = {name for name in AGENT_TOOL_NAMES if "confirmation" in tools[name].inputSchema["properties"]}
-        self.assertEqual(takes, {"create_post", "schedule_post", "publish_post_now", "delete_post", "remove_recording"})
+        self.assertEqual(takes, {"create_post", "schedule_post", "publish_post_now", "delete_post", "remove_recording", "change_clip_design"})
         for name in takes:
             self.assertIn("will_happen", tools[name].description, name)
 

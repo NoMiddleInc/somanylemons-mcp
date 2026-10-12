@@ -150,9 +150,9 @@ def register(server, api) -> None:
         return await act("set_default_recording_design", design_id=design_id, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(annotations=WRITE)
-    async def change_clip_design(clip_id: ClipId, design_id: DesignId, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Re-render one clip in a different design. The current video stays in place until the new one is ready, then the clip's draft post is updated. A clip whose post is scheduled or published cannot be changed; unschedule it first."""
-        return await act("change_clip_design", clip_id=clip_id, design_id=design_id, idempotency_key=idempotency_key, account_id=account_id)
+    async def change_clip_design(clip_id: ClipId, design_id: DesignId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
+        """Re-render one clip in a different design (template) after recording. The current video stays in place until the new one is ready, then the clip's draft post is updated. If the clip's post is scheduled, the first call changes nothing and returns needs_confirmation and will_happen, because the post comes off the schedule: show will_happen, and call again with confirmation after the user says yes. The result's unscheduled_post gives the time it had; when get_recording shows the new video is ready, offer to schedule it again. A published clip cannot be changed."""
+        return await act("change_clip_design", clip_id=clip_id, design_id=design_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
 
     @server.tool(annotations=WRITE)
     async def update_clip_text(clip_id: ClipId, text: Caption, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
