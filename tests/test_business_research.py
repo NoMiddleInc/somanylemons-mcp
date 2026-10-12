@@ -219,6 +219,34 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("coverage.deep_search", tools["find_people"].description)
         self.assertNotIn("Apollo", tools["deep_search"].description)
 
+    async def test_full_list_pulls_everyone_the_first_search_listed_and_returns_the_whole_list(self):
+        from unittest.mock import AsyncMock, patch
+        rows = [{"name": "Kevin Lanzer", "apollo_person_id": "p1"}, {"name": "Megan Hodge", "apollo_person_id": "p2"}]
+        coverage = {"requested": 67, "returned": 2, "full_list_run": True, "full_list": {"people": 67}}
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, request.url.path))
+            if request.method == "POST":
+                self.assertEqual(request.content, b"")
+                return httpx.Response(200, json={"data": {"id": 12, "state": "queued"}})
+            return httpx.Response(200, json={"data": {"id": 12, "state": "completed", "quick_search": {
+                "rows": rows, "coverage": coverage, "credits": {"remaining": 200}, "delivery": {"status": "sent"}}}})
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            full = rendered(await invoke_task(
+                "full_list", {"goal_id": 7}, api_url="https://example.com", api_key="customer",
+                transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/7/full-list"), ("GET", "/api/v1/agent-tasks/12")])
+        self.assertEqual((full["goal_id"], full["source_goal_id"], full["status"]), (12, 7, "completed"))
+        self.assertEqual([row["name"] for row in full["rows"]], ["Kevin Lanzer", "Megan Hodge"])
+        self.assertEqual(full["rows"][0]["provider_person_id"], "p1")
+        self.assertEqual((full["coverage"], full["email_delivery"]), (coverage, {"status": "sent"}))
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertEqual(tools["full_list"].inputSchema["required"], ["goal_id"])
+        self.assertIn("call full_list with this goal_id", tools["find_people"].description)
+        self.assertNotIn("Apollo", tools["full_list"].description)
+
     async def test_declining_a_deep_search_emails_the_first_results_without_searching(self):
         calls = []
 
