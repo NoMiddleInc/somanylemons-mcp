@@ -178,6 +178,70 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
                 api_url="https://example.com", api_key="customer", transport=httpx.MockTransport(handler)))
         self.assertEqual(result["credits"], credits)
 
+    async def test_find_people_passes_the_deep_search_offer_and_deep_search_returns_only_additions(self):
+        from unittest.mock import AsyncMock, patch
+        offer = {"eligible": 2, "credits_per_find": 3, "max_credits": 6, "estimated_seconds": 60,
+                 "people": [{"name": "Dan Stipano", "company": "Davis Polk", "domain": ""}]}
+        found = [{"name": "Daniel Stipano", "match": "confirmed", "apollo_person_id": "p1"},
+                 {"name": "Tim Louthan", "match": "possible", "email": ""}]
+        coverage = {"searched": 2, "confirmed": 1, "possible": 1, "not_found": [], "credits_charged": 3,
+                    "held_for_credits": 0}
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, request.url.path))
+            if request.url.path.endswith("/quick-search"):
+                return httpx.Response(200, json={"data": {"id": 7, "state": "completed", "quick_search": {
+                    "rows": [], "coverage": {"returned": 0, "deep_search": offer}}}})
+            if request.method == "POST":
+                self.assertEqual(request.content, b"")
+                return httpx.Response(200, json={"data": {"id": 9, "state": "queued"}})
+            return httpx.Response(200, json={"data": {"id": 9, "state": "completed", "deep_search": {
+                "rows": found, "coverage": coverage, "credits": {"remaining": 276}, "delivery": {"status": "sent"}}}})
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            searched = rendered(await invoke_task(
+                "find_people", {"request": "Find Dan Stipano at Davis Polk."}, api_url="https://example.com",
+                api_key="customer", transport=httpx.MockTransport(handler)))
+            deep = rendered(await invoke_task(
+                "deep_search", {"goal_id": searched["goal_id"]}, api_url="https://example.com",
+                api_key="customer", transport=httpx.MockTransport(handler)))
+        self.assertEqual(searched["coverage"]["deep_search"], offer)
+        self.assertEqual(calls[1:], [("POST", "/api/v1/agent-tasks/7/deep-search"), ("GET", "/api/v1/agent-tasks/9")])
+        self.assertEqual((deep["goal_id"], deep["source_goal_id"], deep["status"]), (9, 7, "completed"))
+        self.assertEqual([row["match"] for row in deep["rows"]], ["confirmed", "possible"])
+        self.assertEqual(deep["rows"][0]["provider_person_id"], "p1")
+        self.assertEqual((deep["coverage"], deep["credits"]), (coverage, {"remaining": 276}))
+        self.assertEqual(deep["email_delivery"], {"status": "sent"})
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertEqual(tools["deep_search"].inputSchema["required"], ["goal_id"])
+        self.assertIn("possible is a profile that could not be confirmed", tools["deep_search"].description)
+        self.assertIn("coverage.deep_search", tools["find_people"].description)
+        self.assertNotIn("Apollo", tools["deep_search"].description)
+
+    async def test_deep_search_reports_a_running_search_and_a_credit_hold_without_retrying(self):
+        from unittest.mock import AsyncMock, patch
+
+        def running(request):
+            return httpx.Response(200, json={"data": {"id": 9, "state": "running"}})
+
+        with patch("asyncio.sleep", new=AsyncMock()), patch("time.monotonic", side_effect=[0, 0, 500, 500]):
+            waiting = rendered(await invoke_task(
+                "deep_search", {"goal_id": 7}, api_url="https://example.com", api_key="customer",
+                transport=httpx.MockTransport(running)))
+        self.assertEqual((waiting["status"], waiting["rows"]), ("still_running", []))
+
+        def exhausted(request):
+            return httpx.Response(402, json={"detail": {
+                "code": "trial_exhausted", "message": "You have used your 15 free prospects.",
+                "upgrade_url": "https://producerspark.com/pricing"}})
+
+        held = rendered(await invoke_task(
+            "deep_search", {"goal_id": 7}, api_url="https://example.com", api_key="customer",
+            transport=httpx.MockTransport(exhausted)))
+        self.assertEqual((held["status"], held["source_goal_id"], held["rows"]), ("upgrade_required", 7, []))
+        self.assertEqual(held["upgrade_url"], "https://producerspark.com/pricing")
+
     async def test_find_people_creates_one_task_then_returns_its_rows_and_email_status(self):
         from unittest.mock import AsyncMock, patch
         calls = []
