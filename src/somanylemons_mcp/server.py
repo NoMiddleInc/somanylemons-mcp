@@ -106,8 +106,12 @@ async def list_tools():
 @server.list_resources()
 async def list_resources():
     from mcp.types import Resource
+    from .task_tools.people import PEOPLE_META, PEOPLE_MIME, PEOPLE_URI
     from .task_tools.recorder import RECORDER_META, RECORDER_MIME, RECORDER_URI
-    return [Resource(uri=RECORDER_URI, name="recorder", mimeType=RECORDER_MIME, _meta=RECORDER_META)]
+    return [
+        Resource(uri=RECORDER_URI, name="recorder", mimeType=RECORDER_MIME, _meta=RECORDER_META),
+        Resource(uri=PEOPLE_URI, name="people", mimeType=PEOPLE_MIME, _meta=PEOPLE_META),
+    ]
 
 
 @server.read_resource()
@@ -118,6 +122,9 @@ async def read_resource(uri):
     if str(uri) == RECORDER_URI:
         # The widget is the same for everyone and reads no account data.
         return [ReadResourceContents(recorder_html(), RECORDER_MIME, RECORDER_META)]
+    from .task_tools.people import PEOPLE_META, PEOPLE_MIME, PEOPLE_URI, people_html
+    if str(uri) == PEOPLE_URI:
+        return [ReadResourceContents(people_html(), PEOPLE_MIME, PEOPLE_META)]
     key = _request_identity()["api_key"]
     if str(uri).startswith("producerspark-feedback-attachment://"):
         content, mime = await read_task_feedback_attachment(uri, api_url=API_URL, api_key=key)

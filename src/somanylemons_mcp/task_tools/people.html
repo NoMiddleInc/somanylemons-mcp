@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProducerSpark people</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --muted: #666; --bg: #fff; --line: #e2e2e2; --chip: #f1f1ee; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f2; --muted: #a0a0a0; --bg: #1c1c1c; --line: #3a3a3a; --chip: #2a2a2a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; font: 13px/1.4 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  #people { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; padding: 12px; }
+  #people:empty { display: none; }
+  .person { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; text-align: left; background: transparent; color: inherit; font: inherit; }
+  button.person { cursor: pointer; }
+  button.person:hover { border-color: var(--muted); }
+  .face { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--chip); display: grid; place-items: center; font-weight: 600; color: var(--muted); overflow: hidden; }
+  .face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .who { min-width: 0; }
+  .who b, .who span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who span { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="people" aria-label="People found"></div>
+<script>
+(() => {
+  "use strict";
+  const list = document.getElementById("people");
+  let nextId = 1, ready = false;
+  const pending = new Map();
+  const post = (message) => window.parent.postMessage(message, "*");
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    post({ jsonrpc: "2.0", id, method, params });
+    setTimeout(() => { if (pending.delete(id)) reject(new Error("No answer")); }, 10000);
+  });
+  function resize() {
+    if (ready) post({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight } });
+  }
+  const initials = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+
+  // A tool's answer arrives as structured content, or as JSON text on older hosts.
+  function rowsOf(result) {
+    let data = result && result.structuredContent;
+    if (!data) {
+      const text = (((result && result.content) || []).find((part) => part.type === "text") || {}).text || "";
+      try { data = JSON.parse(text); } catch (error) { return []; }
+    }
+    if (data && data.result && typeof data.result === "object") data = data.result;
+    return Array.isArray(data && data.rows) ? data.rows : [];
+  }
+
+  function show(rows) {
+    list.textContent = "";
+    for (const row of rows) {
+      const profile = /^https:\/\//.test(row.linkedin || "") ? row.linkedin : "";
+      const card = document.createElement(profile ? "button" : "div");
+      card.className = "person";
+      if (profile) {
+        card.type = "button";
+        card.title = "Open LinkedIn profile";
+        card.onclick = () => request("ui/open-link", { url: profile }).catch(() => window.open(profile, "_blank", "noopener"));
+      }
+      const face = document.createElement("span");
+      face.className = "face";
+      face.textContent = initials(row.name);
+      if (/^https:\/\//.test(row.photo || "")) {
+        const image = new Image();
+        image.alt = "";
+        image.referrerPolicy = "no-referrer";
+        // A photo that fails to load leaves the initials in place.
+        image.onload = () => { face.textContent = ""; face.appendChild(image); };
+        image.src = row.photo;
+      }
+      const who = document.createElement("span");
+      who.className = "who";
+      const name = document.createElement("b");
+      name.textContent = row.name || "";
+      const role = document.createElement("span");
+      role.textContent = [row.title, row.company].filter(Boolean).join(" · ");
+      who.append(name, role);
+      card.append(face, who);
+      list.appendChild(card);
+    }
+    resize();
+  }
+
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (message.id != null && pending.has(message.id)) {
+      const { resolve, reject } = pending.get(message.id);
+      pending.delete(message.id);
+      message.error ? reject(new Error(message.error.message || "Refused")) : resolve(message.result);
+    } else if (message.method === "ui/notifications/tool-result") {
+      show(rowsOf(message.params));
+    } else if (message.id != null && message.method) {
+      post({ jsonrpc: "2.0", id: message.id, result: {} });
+    }
+  });
+
+  (async () => {
+    try {
+      await request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: {}, appInfo: { name: "ProducerSpark people", version: "1.0.0" } });
+    } catch (error) { /* the cards still render when the result arrives */ }
+    ready = true;
+    post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+    resize();
+  })();
+})();
+</script>
+</body>
+</html>
