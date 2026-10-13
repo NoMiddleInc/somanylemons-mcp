@@ -44,7 +44,7 @@ def register(server, api) -> None:
         meta={"ui": {"resourceUri": RECORDER_URI}, "ui/resourceUri": RECORDER_URI},
     )
     async def record_in_chat(title: Annotated[str, Field(max_length=255)] = "", instruction: Annotated[str, Field(max_length=4000, description="Optional guidance for the edit, such as which topics to cut clips from.")] = "", account_id: AccountId | None = None) -> str:
-        """Show a recorder inside this chat so the user can record a new video or audio take with their camera and microphone. The user presses record, then Use this recording, and it is saved to their account and edited into clips; the recorder then reports the new recording's id in the chat. Use this first whenever the user wants to record. Calling it records nothing by itself. If the user says no recorder appeared, or prefers the browser, use start_browser_recording instead."""
+        """Show a recorder inside this chat so the user can record a new video or audio take with their camera and microphone. The user presses record, then Use this recording, and it is saved to their account and edited into clips. The recorder itself shows editing progress and the finished clips, and shares the recording's id with you, so do not ask the user to report back; when they next write, use get_recording or list_recordings for the details. Use this first whenever the user wants to record. Calling it records nothing by itself. If the user says no recorder appeared, or prefers the browser, use start_browser_recording instead."""
         return "The recorder is shown in the chat. Tell the user to record there and press Use this recording. If no recorder appeared for them, use start_browser_recording instead."
 
     @server.tool(annotations=WRITE, meta=APP_ONLY)

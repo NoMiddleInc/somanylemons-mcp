@@ -24,6 +24,9 @@
   #status { margin: 12px 0 0; min-height: 20px; color: var(--fg); }
   #status.error { color: var(--accent); }
   #status.done { color: var(--ok); font-weight: 600; }
+  #clips { margin: 8px 0 0; padding-left: 18px; }
+  #clips li { margin: 4px 0; }
+  #clips button { padding: 2px 10px; }
   progress { width: 100%; max-width: 560px; height: 8px; margin-top: 10px; display: block; }
 </style>
 </head>
@@ -44,9 +47,11 @@
 </div>
 <progress id="bar" max="100" value="0" hidden></progress>
 <div id="status" role="status"></div>
+<ul id="clips" hidden></ul>
 <script>
 (() => {
   const MAX_SECONDS = 20 * 60;
+  const FOLLOW_SECONDS = window.FOLLOW_SECONDS || 10;
   const $ = (id) => document.getElementById(id);
   const view = $("view"), badge = $("badge"), statusEl = $("status"), bar = $("bar");
   const buttons = { camera: $("camera"), start: $("start"), stop: $("stop"), use: $("use"), again: $("again"), audio: $("audio") };
@@ -191,16 +196,56 @@
       });
       bar.hidden = true;
       say("Sent. ProducerSpark is cutting your clips now.", "done");
-      const note = "I finished recording in the chat. It is saved as recording " + recording.id + " and is being edited into clips. Follow it with get_recording.";
-      request("ui/message", { role: "user", content: [{ type: "text", text: note }] }).catch(() => {
-        request("ui/update-model-context", { content: [{ type: "text", text: note }] }).catch(() => {});
-      });
+      follow(recording.id, account);
     } catch (error) {
       bar.hidden = true;
       say(error.message + " Your recording is still here: try again.", "error");
       show("use", "again");
     }
     busy = false;
+  }
+
+  // Claude learns the outcome without a message the user has to send.
+  const tell = (text) => request("ui/update-model-context", { content: [{ type: "text", text }] }).catch(() => {});
+
+  function showClips(clips) {
+    const list = $("clips");
+    list.textContent = "";
+    clips.forEach((clip) => {
+      const item = document.createElement("li");
+      item.textContent = (clip.title || "Clip " + clip.id) + (clip.ready ? "" : " (rendering)");
+      if (clip.video_url) {
+        const link = document.createElement("button");
+        link.textContent = "Watch";
+        link.onclick = () => request("ui/open-link", { url: clip.video_url }).catch(() => window.open(clip.video_url, "_blank"));
+        item.append(" ", link);
+      }
+      list.append(item);
+    });
+    list.hidden = !clips.length;
+  }
+
+  async function follow(id, account) {
+    tell("The user recorded in the chat. It is saved as ProducerSpark recording " + id + " and is being edited into clips. The recorder shows progress; use get_recording for details.");
+    for (let check = 0; check < 90; check++) {
+      await new Promise((resolve) => setTimeout(resolve, FOLLOW_SECONDS * 1000));
+      let recording;
+      try { recording = await callTool("get_recording", { recording_id: id, ...account }); } catch (error) { continue; }
+      const clips = recording.clips || [];
+      showClips(clips);
+      if (recording.status === "failed") {
+        say("Editing stopped: " + (recording.message || "the recording could not be edited.") + " Ask Claude to retry it.", "error");
+        tell("ProducerSpark recording " + id + " failed: " + (recording.message || "no reason given") + ". Offer retry_recording.");
+        return;
+      }
+      if (recording.status === "review" && clips.length && clips.every((clip) => clip.ready)) {
+        say(clips.length + (clips.length === 1 ? " clip is" : " clips are") + " ready. Ask Claude to schedule or change them.", "done");
+        tell("ProducerSpark recording " + id + " is finished: " + clips.length + " clip(s) ready (" + clips.map((clip) => "clip " + clip.id + ' "' + (clip.title || "") + '"').join(", ") + "). Each is a draft post in Scheduling.");
+        return;
+      }
+      say("Sent. Cutting your clips" + (clips.length ? ": " + clips.filter((clip) => clip.ready).length + " of " + clips.length + " ready." : "..."), "done");
+    }
+    say("Still editing. Ask Claude how the recording is going.", "done");
   }
 
   buttons.camera.onclick = () => turnOn(false);
@@ -212,7 +257,7 @@
 
   (async () => {
     try {
-      await request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: {}, appInfo: { name: "ProducerSpark recorder", version: "1.0.0" } });
+      await request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: {}, appInfo: { name: "ProducerSpark recorder", version: "1.1.0" } });
     } catch (error) { /* still usable for recording; sending will report the problem */ }
     ready = true;
     post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
