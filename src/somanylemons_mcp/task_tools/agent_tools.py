@@ -4,6 +4,7 @@ Each tool is a typed front for one backend action at /api/v1/agent-tasks/agent-t
 The backend owns every rule (what may be edited when, network limits, who may act); nothing
 here decides anything beyond the shape of the arguments.
 """
+import asyncio
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -29,12 +30,15 @@ READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=
 WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 PUBLIC = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True)
 
+RECORDING_POLL_SECONDS = 5
+
 AGENT_TOOL_NAMES = frozenset({
     "get_posting_overview", "list_posts", "get_post", "create_post", "update_post", "schedule_post",
     "unschedule_post", "publish_post_now", "delete_post", "copy_post_to_network",
     "list_recordings", "get_recording", "add_recording", "recut_recording", "retry_recording",
     "remove_recording", "list_recording_designs", "set_default_recording_design",
     "change_clip_design", "update_clip_text", "send_clip_to_scheduling",
+    "start_browser_recording", "wait_for_recording",
     "get_email_sequence", "pause_email_agent",
 })
 
@@ -48,7 +52,7 @@ INSTRUCTIONS = (
     "Every result reports what actually happened. If a result has a non-empty not_done list, tell the user what was not done and why; never describe the request as complete. "
     "A tool error saying the agent is not on the account means the user does not have that agent; say so plainly and do not retry. "
     "Email Agent: get_email_sequence reads the emails a list sends and its sending counts, and pause_email_agent stops sending; pausing is always safe. Starting the Email Agent, editing its emails and enrolling people are done in ProducerSpark in the browser, never from here. "
-    "Recording a new video from a camera happens in ProducerSpark in the browser; from here, add_recording brings in an existing video or audio file by direct link."
+    "Recording a new video from a camera happens in ProducerSpark in the browser. When the user wants to record, call start_browser_recording, give them its record_url as a link to open, and then call wait_for_recording with its started_at, repeating while the status is waiting; do not ask them to tell you when they are done. Once it is found, follow it with get_recording until the clips are ready. add_recording brings in an existing video or audio file by direct link instead."
 )
 
 
@@ -138,6 +142,22 @@ def register(server, api) -> None:
     async def remove_recording(recording_id: RecordingId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
         """Remove a recording and stop any editing in progress. Posts already created from its clips stay in Scheduling. Use only when the user asked to remove this recording. The first call removes nothing: it returns needs_confirmation and will_happen. Call again with confirmation only after the user says yes."""
         return await act("remove_recording", recording_id=recording_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
+
+    @server.tool(annotations=READ)
+    async def start_browser_recording(account_id: AccountId | None = None) -> dict:
+        """Start a new camera or microphone recording: returns record_url, the ProducerSpark recorder page for the user to open in their browser, and started_at. Show record_url as a link, then call wait_for_recording with started_at so the new recording is picked up without the user reporting back. Nothing is recorded or changed by this call."""
+        return await act("start_browser_recording", account_id=account_id)
+
+    @server.tool(annotations=READ)
+    async def wait_for_recording(since: Annotated[str, Field(max_length=40, description="The started_at value from start_browser_recording.")], timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 45, account_id: AccountId | None = None) -> dict:
+        """Wait for the recording the user is making in the browser. Returns status found with the recording as soon as one made after since exists, or status waiting when the window ends: call again while the user is still recording, and stop if they say they are not going to. A found recording may still be editing; follow it with get_recording. Read-only."""
+        for check in range(timeout_seconds // RECORDING_POLL_SECONDS + 1):
+            if check:
+                await asyncio.sleep(RECORDING_POLL_SECONDS)
+            result = await act("wait_for_recording", since=since, account_id=account_id)
+            if result.get("status") != "waiting":
+                break
+        return result
 
     @server.tool(annotations=READ)
     async def list_recording_designs(account_id: AccountId | None = None) -> dict:

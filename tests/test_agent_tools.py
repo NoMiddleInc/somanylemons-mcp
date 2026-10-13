@@ -1,6 +1,7 @@
 """Recording and Scheduling tools forward typed arguments to one backend action each."""
 import json
 import unittest
+from unittest import mock
 import httpx
 from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES, invoke_task, task_schemas
 from somanylemons_mcp.task_tools.agent_tools import AGENT_TOOL_NAMES
@@ -20,10 +21,10 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_every_tool_is_offered_with_honest_annotations(self):
         tools = {tool.name: tool for tool in await task_schemas()}
-        self.assertEqual(len(AGENT_TOOL_NAMES), 23)
+        self.assertEqual(len(AGENT_TOOL_NAMES), 25)
         self.assertTrue(AGENT_TOOL_NAMES <= TASK_TOOL_NAMES)
         self.assertTrue(AGENT_TOOL_NAMES <= set(tools))
-        read_only = {"get_posting_overview", "list_posts", "get_post", "list_recordings", "get_recording", "list_recording_designs", "get_email_sequence"}
+        read_only = {"get_posting_overview", "list_posts", "get_post", "list_recordings", "get_recording", "list_recording_designs", "get_email_sequence", "start_browser_recording", "wait_for_recording"}
         destructive = {"publish_post_now", "delete_post", "remove_recording"}
         for name in AGENT_TOOL_NAMES:
             tool = tools[name]
@@ -138,6 +139,38 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
         tools = {tool.name for tool in await task_schemas()}
         self.assertIn("pause_email_agent", tools)
         self.assertFalse({name for name in tools if "start_email" in name or "enroll" in name})
+
+
+    async def test_browser_recording_hands_off_the_recorder_link_and_the_time_to_wait_from(self):
+        started = {"data": {"record_url": "https://producerspark.com/agent?tab=recording", "started_at": "2026-10-12T15:00:00Z", "latest_recording_id": None}}
+        calls, result = await self._call("start_browser_recording", {}, started)
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/agent-tools/start_browser_recording")
+        self.assertEqual(json.loads(calls[0].content), {})
+        self.assertIn("https://producerspark.com/agent?tab=recording", str(result))
+        self.assertIn("2026-10-12T15:00:00Z", str(result))
+
+    async def test_waiting_for_a_recording_returns_as_soon_as_the_backend_finds_it(self):
+        found = {"data": {"status": "found", "recording": {"id": "abc", "status": "editing", "clips": []}}}
+        calls, result = await self._call("wait_for_recording", {"since": "2026-10-12T15:00:00Z"}, found)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/agent-tools/wait_for_recording")
+        self.assertEqual(json.loads(calls[0].content), {"since": "2026-10-12T15:00:00Z"})
+        self.assertIn("found", str(result))
+
+    async def test_waiting_for_a_recording_checks_again_until_its_window_ends(self):
+        waiting = {"data": {"status": "waiting", "record_url": "https://producerspark.com/agent?tab=recording"}}
+        with mock.patch("somanylemons_mcp.task_tools.agent_tools.asyncio.sleep", new=mock.AsyncMock()) as sleep:
+            calls, result = await self._call("wait_for_recording", {"since": "2026-10-12T15:00:00Z", "timeout_seconds": 12}, waiting)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleep.await_count, 2)
+        self.assertIn("waiting", str(result))
+
+    async def test_a_single_check_never_sleeps(self):
+        waiting = {"data": {"status": "waiting"}}
+        with mock.patch("somanylemons_mcp.task_tools.agent_tools.asyncio.sleep", new=mock.AsyncMock()) as sleep:
+            calls, _ = await self._call("wait_for_recording", {"since": "2026-10-12T15:00:00Z", "timeout_seconds": 0}, waiting)
+        self.assertEqual(len(calls), 1)
+        sleep.assert_not_awaited()
 
 
 if __name__ == "__main__":
