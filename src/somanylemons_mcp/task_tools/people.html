@@ -11,6 +11,8 @@
   body { margin: 0; padding: 0; font: 13px/1.4 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
   #people { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; padding: 12px; }
   #people:empty { display: none; }
+  #note { margin: 0; padding: 10px 12px; color: var(--muted); }
+  #note:empty { display: none; }
   .person { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; text-align: left; background: transparent; color: inherit; font: inherit; }
   button.person { cursor: pointer; }
   button.person:hover { border-color: var(--muted); }
@@ -22,6 +24,7 @@
 </style>
 </head>
 <body>
+<p id="note" role="status"></p>
 <div id="people" aria-label="People found"></div>
 <script>
 (() => {
@@ -49,11 +52,15 @@
       try { data = JSON.parse(text); } catch (error) { return []; }
     }
     if (data && data.result && typeof data.result === "object") data = data.result;
-    return Array.isArray(data && data.rows) ? data.rows : [];
+    return { rows: Array.isArray(data && data.rows) ? data.rows : [], status: String((data && data.status) || "") };
   }
 
-  function show(rows) {
+  // An empty result says why, so the chat never shows a blank box.
+  const EMPTY = { still_running: "Still searching. The people appear here when the search finishes.", needs_attention: "This search did not finish. Try it again in a few minutes.", upgrade_required: "No people shown: this account needs a plan or more credits." };
+
+  function show({ rows, status }) {
     list.textContent = "";
+    document.getElementById("note").textContent = rows.length ? "" : (EMPTY[status] || "No people to show for this search.");
     for (const row of rows) {
       const profile = /^https:\/\//.test(row.linkedin || "") ? row.linkedin : "";
       const card = document.createElement(profile ? "button" : "div");

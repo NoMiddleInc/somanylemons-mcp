@@ -12,6 +12,20 @@ class PeopleCardTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(tools[name].meta["ui"]["resourceUri"], PEOPLE_URI, name)
             self.assertIn("still write the contact table", tools[name].description, name)
 
+    async def test_a_search_that_could_not_finish_says_so_and_is_not_restarted(self):
+        import httpx
+        from somanylemons_mcp.task_bridge import invoke_task
+        failed = {"data": {"id": 446, "state": "needs_attention", "quick_search": None, "tasks": []}}
+        result = await invoke_task(
+            "find_people", {"request": "Find 6 more", "idempotency_key": "33333333-3333-4333-8333-333333333333"},
+            api_url="https://example.com", api_key="scoped-owner",
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json=failed)))
+        self.assertIn("could_not_finish", str(result))
+        self.assertIn("Do not call the tool again", str(result))
+        from somanylemons_mcp.task_tools.people import people_html
+        for text in ("This search did not finish", "Still searching"):
+            self.assertIn(text, people_html())
+
     async def test_hosted_server_serves_the_cards_with_photos_from_our_own_address_only(self):
         from mcp import types
         from somanylemons_mcp import server as hosted
