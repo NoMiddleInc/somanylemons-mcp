@@ -48,9 +48,11 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             "find_people", {"request": "Find 5 CFOs in Ohio", "idempotency_key": KEY},
             {"data": {"id": 41, "state": "completed", "quick_search": {"rows": [], "coverage": {}}}})
         self.assertIn("https://producerspark.com/agent?tab=tasks&task=41", json.dumps(str(result)))
+        self.assertIn("reply_must_end_with", str(result))
+        self.assertIn("[Open this search in ProducerSpark](https://producerspark.com/agent?tab=tasks&task=41)", str(result))
         tools = {tool.name: tool for tool in await task_schemas()}
         for name in ("find_people", "deep_search", "full_list"):
-            self.assertIn("Open this search in ProducerSpark", tools[name].description, name)
+            self.assertIn("reply_must_end_with", tools[name].description, name)
         self.assertIn("Open ProducerSpark", tools["get_started"].description)
 
     async def test_reschedule_forwards_only_what_was_given_to_its_own_action(self):
