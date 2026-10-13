@@ -468,6 +468,11 @@ def create_server(api: TaskApiClient) -> FastMCP:
         ),
     )
 
+    @server.tool(title="Get started with ProducerSpark", annotations=READ)
+    async def get_started() -> dict:
+        """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Searching and results also appear at results_url. Reads only; nothing is searched or charged."""
+        return await api.request("GET", "/api/v1/agent-tasks/getting-started")
+
     @server.tool(annotations=READ)
     async def get_email_agent_status(
         config_id: PositiveId | None = None,

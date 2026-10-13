@@ -33,6 +33,16 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             if name not in read_only:
                 self.assertIn("idempotency_key", tool.inputSchema["required"], name)
 
+    async def test_get_started_reads_the_account_without_arguments(self):
+        calls, result = await self._call(
+            "get_started", {},
+            {"data": {"plan": "free_trial", "can_search_people": True, "free_prospects": {"granted": 15, "used": 0, "remaining": 15}}})
+        self.assertEqual((calls[0].method, calls[0].url.path), ("GET", "/api/v1/agent-tasks/getting-started"))
+        self.assertIn("free_trial", json.dumps(str(result)))
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertTrue(tools["get_started"].annotations.readOnlyHint)
+        self.assertEqual(tools["get_started"].inputSchema.get("required", []), [])
+
     async def test_reschedule_forwards_only_what_was_given_to_its_own_action(self):
         calls, result = await self._call(
             "schedule_post", {"post_id": 5, "scheduled_for": "2026-10-14T09:00", "idempotency_key": KEY},
