@@ -52,7 +52,7 @@ INSTRUCTIONS = (
     "Every result reports what actually happened. If a result has a non-empty not_done list, tell the user what was not done and why; never describe the request as complete. "
     "A tool error saying the agent is not on the account means the user does not have that agent; say so plainly and do not retry. "
     "Email Agent: get_email_sequence reads the emails a list sends and its sending counts, and pause_email_agent stops sending; pausing is always safe. Starting the Email Agent, editing its emails and enrolling people are done in ProducerSpark in the browser, never from here. "
-    "Recording a new video from a camera happens in ProducerSpark in the browser. When the user wants to record, call start_browser_recording, give them its record_url as a link to open, and then call wait_for_recording with its started_at, repeating while the status is waiting; do not ask them to tell you when they are done. Once it is found, follow it with get_recording until the clips are ready. add_recording brings in an existing video or audio file by direct link instead."
+    "Recording a new video: call record_in_chat, which shows a recorder inside the chat; the user records and presses Use this recording, and the recorder then reports the new recording's id in the chat, so follow it with get_recording until the clips are ready. If the user says no recorder appeared, or asks for a link, call start_browser_recording, give them its record_url as a link to open, and then call wait_for_recording with its started_at, repeating while the status is waiting; do not ask them to tell you when they are done. add_recording brings in an existing video or audio file by direct link instead."
 )
 
 

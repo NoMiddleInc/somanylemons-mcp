@@ -24,7 +24,7 @@ from .business_research import BusinessResearchSpec, saved_business_answer
 from .live_progress import live_update, contact_table_metadata, watch_response
 from .provider_disclosure import hide_data_provider_in_reply
 from .agent_tools import INSTRUCTIONS as AGENT_TOOL_INSTRUCTIONS, register as register_agent_tools
-from .recorder_test import register as register_recorder_test
+from .recorder import register as register_recorder
 
 PositiveId = Annotated[int, Field(gt=0)]
 ContactCount = Annotated[int, Field(ge=1, le=5000)]
@@ -995,7 +995,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
                                  params={k: v for k, v in {"campaign_id": campaign_id, "config_id": config_id, "include_rows": include_rows}.items() if v is not None})
 
     register_agent_tools(server, api)
-    register_recorder_test(server)
+    register_recorder(server, api)
 
     @server.resource(
         "producerspark-task-artifact://{goal_id}/{artifact_id}",

@@ -75,7 +75,7 @@ RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 OVERVIEW = (
     "ProducerSpark runs this account's agents. People and contacts: call find_people first with "
     "the request verbatim. Posts: list_posts, create_post, update_post, schedule_post. Recordings "
-    "and clips: list_recordings, change_clip_design, update_clip_text. Use real ids from a list "
+    "and clips: record_in_chat to record, list_recordings, change_clip_design, update_clip_text. Use real ids from a list "
     "call, never a guessed one. Publishing, scheduling, deleting a post and removing a recording "
     "never happen on the first call: the result has needs_confirmation and will_happen. Show "
     "will_happen to the user word for word, wait for a clear yes, then repeat the call with its "
@@ -104,18 +104,18 @@ async def list_tools():
 @server.list_resources()
 async def list_resources():
     from mcp.types import Resource
-    from .task_tools.recorder_test import RECORDER_TEST_META, RECORDER_TEST_MIME, RECORDER_TEST_URI
-    return [Resource(uri=RECORDER_TEST_URI, name="recorder_test", mimeType=RECORDER_TEST_MIME, _meta=RECORDER_TEST_META)]
+    from .task_tools.recorder import RECORDER_META, RECORDER_MIME, RECORDER_URI
+    return [Resource(uri=RECORDER_URI, name="recorder", mimeType=RECORDER_MIME, _meta=RECORDER_META)]
 
 
 @server.read_resource()
 async def read_resource(uri):
     from mcp.server.lowlevel.helper_types import ReadResourceContents
     from .task_bridge import read_task_artifact, read_task_feedback_attachment
-    from .task_tools.recorder_test import RECORDER_TEST_META, RECORDER_TEST_MIME, RECORDER_TEST_URI, recorder_test_html
-    if str(uri) == RECORDER_TEST_URI:
+    from .task_tools.recorder import RECORDER_META, RECORDER_MIME, RECORDER_URI, recorder_html
+    if str(uri) == RECORDER_URI:
         # The widget is the same for everyone and reads no account data.
-        return [ReadResourceContents(recorder_test_html(), RECORDER_TEST_MIME, RECORDER_TEST_META)]
+        return [ReadResourceContents(recorder_html(), RECORDER_MIME, RECORDER_META)]
     key = _request_identity()["api_key"]
     if str(uri).startswith("producerspark-feedback-attachment://"):
         content, mime = await read_task_feedback_attachment(uri, api_url=API_URL, api_key=key)

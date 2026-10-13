@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProducerSpark recorder</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --muted: #666; --bg: #fff; --line: #d9d9d9; --accent: #c8102e; --ok: #1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f2; --muted: #a0a0a0; --bg: #1c1c1c; --line: #3a3a3a; --ok: #4ac26b; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 14px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  .stage { position: relative; width: 100%; max-width: 560px; }
+  video { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; display: block; }
+  .badge { position: absolute; top: 10px; left: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font: 600 12px/1.4 ui-monospace, monospace; display: none; }
+  .badge.live { display: block; }
+  .badge.live::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  [hidden] { display: none !important; }
+  #status { margin: 12px 0 0; min-height: 20px; color: var(--fg); }
+  #status.error { color: var(--accent); }
+  #status.done { color: var(--ok); font-weight: 600; }
+  progress { width: 100%; max-width: 560px; height: 8px; margin-top: 10px; display: block; }
+</style>
+</head>
+<body>
+<h1>Record for ProducerSpark</h1>
+<p id="lead">Record here, then send it to your account to be cut into clips. Nothing leaves this chat until you press Use this recording.</p>
+<div class="stage">
+  <video id="view" autoplay muted playsinline></video>
+  <span id="badge" class="badge">0:00</span>
+</div>
+<div class="row">
+  <button id="camera" class="primary">Turn on camera</button>
+  <button id="start" class="primary" hidden>Start recording</button>
+  <button id="stop" class="primary" hidden>Stop</button>
+  <button id="use" class="primary" hidden>Use this recording</button>
+  <button id="again" hidden>Record again</button>
+  <button id="audio" hidden>Audio only</button>
+</div>
+<progress id="bar" max="100" value="0" hidden></progress>
+<div id="status" role="status"></div>
+<script>
+(() => {
+  const MAX_SECONDS = 20 * 60;
+  const $ = (id) => document.getElementById(id);
+  const view = $("view"), badge = $("badge"), statusEl = $("status"), bar = $("bar");
+  const buttons = { camera: $("camera"), start: $("start"), stop: $("stop"), use: $("use"), again: $("again"), audio: $("audio") };
+  let stream = null, recorder = null, chunks = [], take = null, timer = null, seconds = 0, input = {}, busy = false;
+
+  const show = (...names) => Object.entries(buttons).forEach(([name, el]) => { el.hidden = !names.includes(name); });
+  const say = (text, kind) => { statusEl.textContent = text; statusEl.className = kind || ""; resize(); };
+  const clock = (total) => Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+
+  // --- Host bridge (JSON-RPC over postMessage) ---
+  let nextId = 1, ready = false;
+  const pending = new Map();
+  const post = (message) => window.parent.postMessage(message, "*");
+  const request = (method, params, timeoutMs) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    post({ jsonrpc: "2.0", id, method, params });
+    setTimeout(() => { if (pending.delete(id)) reject(new Error("The chat did not answer in time.")); }, timeoutMs || 10000);
+  });
+  function resize() {
+    if (ready) post({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight } });
+  }
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (message.id != null && pending.has(message.id)) {
+      const { resolve, reject } = pending.get(message.id);
+      pending.delete(message.id);
+      message.error ? reject(new Error(message.error.message || "The chat refused the request.")) : resolve(message.result);
+    } else if (message.method === "ui/notifications/tool-input") {
+      input = (message.params && message.params.arguments) || {};
+    } else if (message.id != null && message.method) {
+      post({ jsonrpc: "2.0", id: message.id, result: {} });
+    }
+  });
+
+  // A tool's answer arrives as structured content, or as JSON text on older hosts.
+  async function callTool(name, args) {
+    const result = await request("tools/call", { name, arguments: args }, 180000);
+    const text = ((result.content || []).find((part) => part.type === "text") || {}).text || "";
+    if (result.isError) throw new Error(text || "ProducerSpark could not do that.");
+    let data = result.structuredContent;
+    if (!data) { try { data = JSON.parse(text); } catch (error) { throw new Error(text || "ProducerSpark gave no answer."); } }
+    return data.result && typeof data.result === "object" ? data.result : data;
+  }
+
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+
+  function pickType(hasVideo) {
+    const wanted = hasVideo
+      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+      : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+    return wanted.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+  }
+
+  function stopStream() {
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    stream = null;
+  }
+
+  async function turnOn(audioOnly) {
+    if (!navigator.mediaDevices || typeof MediaRecorder === "undefined") {
+      say("This chat cannot record here. Ask Claude for the recorder link instead.", "error");
+      return;
+    }
+    say(audioOnly ? "Asking for your microphone..." : "Asking for your camera and microphone...");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(audioOnly ? { audio: true } : { audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+    } catch (error) {
+      const denied = error.name === "NotAllowedError" || error.name === "SecurityError";
+      say(denied ? "Camera or microphone access was blocked. Allow it in your browser, or ask Claude for the recorder link instead." : "No camera or microphone was found (" + error.name + ").", "error");
+      show("camera", "audio");
+      return;
+    }
+    view.srcObject = stream; view.muted = true; view.controls = false;
+    show("start");
+    say(stream.getVideoTracks().length ? "Ready when you are." : "Microphone is on. Ready when you are.");
+  }
+
+  function startRecording() {
+    const type = pickType(stream.getVideoTracks().length > 0);
+    chunks = [];
+    try {
+      recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 2500000 } : undefined);
+    } catch (error) {
+      say("Recording could not start (" + error.name + ").", "error");
+      return;
+    }
+    recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = () => {
+      clearInterval(timer);
+      badge.classList.remove("live");
+      const mime = (recorder.mimeType || type || "video/webm");
+      take = { blob: new Blob(chunks, { type: mime.split(";")[0] }), type: mime.split(";")[0], seconds };
+      stopStream();
+      view.srcObject = null; view.muted = false; view.controls = true;
+      try { view.src = URL.createObjectURL(take.blob); } catch (error) { /* playback is a convenience */ }
+      show("use", "again");
+      say("Recorded " + clock(take.seconds) + " (" + (take.blob.size / 1048576).toFixed(1) + " MB). Play it back, then use it or record again.");
+    };
+    seconds = 0;
+    badge.textContent = "0:00"; badge.classList.add("live");
+    timer = setInterval(() => {
+      seconds += 1; badge.textContent = clock(seconds);
+      if (seconds >= MAX_SECONDS) recorder.stop();
+    }, 1000);
+    recorder.start(1000);
+    show("stop");
+    say("Recording...");
+  }
+
+  function put(url, blob, type) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      xhr.setRequestHeader("Content-Type", type);
+      xhr.upload.onprogress = (event) => { if (event.lengthComputable) bar.value = Math.round(event.loaded / event.total * 100); };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("The upload was refused (" + xhr.status + ").")));
+      xhr.onerror = () => reject(new Error("The upload could not reach storage from this chat."));
+      xhr.send(blob);
+    });
+  }
+
+  async function send() {
+    if (busy || !take) return;
+    busy = true; show(); bar.hidden = false; bar.value = 0;
+    const account = input.account_id ? { account_id: input.account_id } : {};
+    try {
+      say("Preparing the upload...");
+      take.upload = take.upload || await callTool("create_recording_upload", {
+        origin: location.origin, content_type: take.type,
+        file_name: "claude-recording." + (take.type.includes("mp4") ? "mp4" : "webm"),
+        idempotency_key: take.startKey = take.startKey || uuid(), ...account,
+      });
+      if (take.blob.size > take.upload.max_bytes) throw new Error("This recording is too large to send.");
+      say("Uploading...");
+      await put(take.upload.upload_url, take.blob, take.upload.content_type || take.type);
+      say("Saving to your account...");
+      const recording = await callTool("finish_recording_upload", {
+        upload_id: take.upload.upload_id, title: input.title || "", instruction: input.instruction || "",
+        idempotency_key: take.finishKey = take.finishKey || uuid(), ...account,
+      });
+      bar.hidden = true;
+      say("Sent. ProducerSpark is cutting your clips now.", "done");
+      const note = "I finished recording in the chat. It is saved as recording " + recording.id + " and is being edited into clips. Follow it with get_recording.";
+      request("ui/message", { role: "user", content: [{ type: "text", text: note }] }).catch(() => {
+        request("ui/update-model-context", { content: [{ type: "text", text: note }] }).catch(() => {});
+      });
+    } catch (error) {
+      bar.hidden = true;
+      say(error.message + " Your recording is still here: try again.", "error");
+      show("use", "again");
+    }
+    busy = false;
+  }
+
+  buttons.camera.onclick = () => turnOn(false);
+  buttons.audio.onclick = () => turnOn(true);
+  buttons.start.onclick = startRecording;
+  buttons.stop.onclick = () => recorder && recorder.state !== "inactive" && recorder.stop();
+  buttons.use.onclick = send;
+  buttons.again.onclick = () => { take = null; view.removeAttribute("src"); view.load(); turnOn(false); };
+
+  (async () => {
+    try {
+      await request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: {}, appInfo: { name: "ProducerSpark recorder", version: "1.0.0" } });
+    } catch (error) { /* still usable for recording; sending will report the problem */ }
+    ready = true;
+    post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+    resize();
+  })();
+})();
+</script>
+</body>
+</html>
