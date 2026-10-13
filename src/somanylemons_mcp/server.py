@@ -73,8 +73,8 @@ RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 # Clients keep only the first couple of thousand characters of the instructions, so the part
 # every conversation needs comes first and stays short.
 OVERVIEW = (
-    "ProducerSpark runs this account's agents. When the user has just connected, says hello, or "
-    "asks what they can do or how to start, call get_started and follow its next_step. "
+    "ProducerSpark runs this account's agents. New or unsure user: call get_started and follow "
+    "next_step. Always show a result's view_in_producerspark or results_url as a clickable link. "
     "People and contacts: call find_people first with "
     "the request verbatim. Posts: list_posts, create_post, update_post, schedule_post. Recordings "
     "and clips: record_in_chat to record, list_recordings, change_clip_design, update_clip_text. Use real ids from a list "
