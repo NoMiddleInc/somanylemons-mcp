@@ -28,6 +28,15 @@ class RecorderTests(unittest.IsolatedAsyncioTestCase):
         result = await invoke_task("record_in_chat", {"title": "Launch"}, api_url="https://example.invalid", api_key="scoped-owner")
         self.assertIn("recorder is shown", str(result))
 
+    async def test_show_recording_plays_clips_in_the_same_widget_and_reaches_no_backend(self):
+        tool = {tool.name: tool for tool in await task_schemas()}["show_recording"]
+        self.assertIn("show_recording", TASK_TOOL_NAMES)
+        self.assertEqual(tool.meta["ui"]["resourceUri"], RECORDER_URI)
+        self.assertEqual(tool.inputSchema["required"], ["recording_id"])
+        self.assertTrue(tool.annotations.readOnlyHint)
+        result = await invoke_task("show_recording", {"recording_id": "rec-1"}, api_url="https://example.invalid", api_key="scoped-owner")
+        self.assertIn("playing in the chat", str(result))
+
     async def test_the_test_widget_is_gone(self):
         self.assertNotIn("open_recorder_test", {tool.name for tool in await task_schemas()})
         self.assertNotIn("open_recorder_test", TASK_TOOL_NAMES)
@@ -60,6 +69,7 @@ class RecorderTests(unittest.IsolatedAsyncioTestCase):
         content = read.root.contents[0]
         self.assertEqual(content.meta["ui"]["permissions"], {"camera": {}, "microphone": {}})
         self.assertEqual(content.meta["ui"]["csp"]["connectDomains"], ["https://storage.googleapis.com"])
+        self.assertEqual(content.meta["ui"]["csp"]["resourceDomains"], ["https://storage.googleapis.com"])
         for text in ("getUserMedia", "create_recording_upload", "finish_recording_upload"):
             self.assertIn(text, content.text)
         self.assertNotIn("Apollo", content.text)
