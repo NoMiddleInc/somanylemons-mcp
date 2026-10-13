@@ -91,14 +91,16 @@
       const result = await request("ui/initialize", {
         protocolVersion: "2026-01-26",
         appCapabilities: {},
-        clientInfo: { name: "ProducerSpark recorder test", version: "0.0.1" },
+        appInfo: { name: "ProducerSpark recorder test", version: "0.0.2" },
       });
       ready = true;
-      post({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
       note("host", result.hostInfo || "not reported");
       note("host_granted_permissions", (result.hostCapabilities && result.hostCapabilities.sandbox && result.hostCapabilities.sandbox.permissions) || "not reported");
       note("host_csp", (result.hostCapabilities && result.hostCapabilities.sandbox && result.hostCapabilities.sandbox.csp) || "not reported");
     } catch (error) {
+      // Still report the size, so a host that answered differently shows the test.
+      ready = true;
       note("host_handshake", "failed: " + error.message);
     }
     resize();
@@ -144,7 +146,7 @@
 
   document.getElementById("report").onclick = () => {
     const text = "Recorder test result:\n" + logEl.textContent;
-    request("ui/message", { role: "user", content: { type: "text", text } }).catch((error) => note("send_to_chat", "failed: " + error.message + " (copy the text above instead)"));
+    request("ui/message", { role: "user", content: [{ type: "text", text }] }).catch((error) => note("send_to_chat", "failed: " + error.message + " (copy the text above instead)"));
   };
 
   start();
