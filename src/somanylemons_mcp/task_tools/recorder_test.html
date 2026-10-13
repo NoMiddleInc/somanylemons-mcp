@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorder test</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --muted: #666; --bg: #fff; --line: #d9d9d9; --accent: #c8102e; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f2; --muted: #a0a0a0; --bg: #1c1c1c; --line: #3a3a3a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 14px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  video { width: 100%; max-width: 480px; aspect-ratio: 16/9; background: #000; border-radius: 8px; display: block; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  pre { margin: 12px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>ProducerSpark recorder test</h1>
+<p>Checks whether this chat lets a connector use your camera and microphone. Nothing is uploaded or saved.</p>
+<video id="preview" autoplay muted playsinline></video>
+<div class="row">
+  <button id="camera" class="primary">Turn on camera and mic</button>
+  <button id="record" disabled>Record 5 seconds</button>
+  <button id="report">Send result to chat</button>
+</div>
+<pre id="log"></pre>
+<script>
+(() => {
+  const facts = {};
+  const logEl = document.getElementById("log");
+  const preview = document.getElementById("preview");
+  const cameraBtn = document.getElementById("camera");
+  const recordBtn = document.getElementById("record");
+  let stream = null;
+
+  const note = (key, value) => {
+    facts[key] = value;
+    logEl.textContent = Object.entries(facts).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
+    resize();
+    // Keeps the model's view of the test current without posting a chat message.
+    notify("ui/update-model-context", { content: [{ type: "text", text: "Recorder test so far:\n" + logEl.textContent }] }, true);
+  };
+
+  // --- Host bridge (JSON-RPC over postMessage) ---
+  let nextId = 1;
+  const pending = new Map();
+  let ready = false;
+  const post = (message) => window.parent.postMessage(message, "*");
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    post({ jsonrpc: "2.0", id, method, params });
+    setTimeout(() => { if (pending.delete(id)) reject(new Error(method + " timed out")); }, 8000);
+  });
+  function notify(method, params, asRequest) {
+    if (!ready) return;
+    if (asRequest) request(method, params).catch(() => {});
+    else post({ jsonrpc: "2.0", method, params });
+  }
+  const resize = () => notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight });
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (message.id != null && pending.has(message.id)) {
+      const { resolve, reject } = pending.get(message.id);
+      pending.delete(message.id);
+      message.error ? reject(new Error(message.error.message || "host error")) : resolve(message.result);
+    } else if (message.id != null && message.method) {
+      post({ jsonrpc: "2.0", id: message.id, result: {} });
+    }
+  });
+
+  const allows = (feature) => {
+    const policy = document.permissionsPolicy || document.featurePolicy;
+    try { return policy ? policy.allowsFeature(feature) : "unknown (no policy API)"; } catch (error) { return "unknown"; }
+  };
+
+  async function start() {
+    note("secure_context", window.isSecureContext);
+    note("origin", location.origin);
+    note("media_devices_api", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+    note("media_recorder_api", typeof MediaRecorder !== "undefined");
+    note("policy_allows_camera", allows("camera"));
+    note("policy_allows_microphone", allows("microphone"));
+    try {
+      const result = await request("ui/initialize", {
+        protocolVersion: "2026-01-26",
+        appCapabilities: {},
+        clientInfo: { name: "ProducerSpark recorder test", version: "0.0.1" },
+      });
+      ready = true;
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
+      note("host", result.hostInfo || "not reported");
+      note("host_granted_permissions", (result.hostCapabilities && result.hostCapabilities.sandbox && result.hostCapabilities.sandbox.permissions) || "not reported");
+      note("host_csp", (result.hostCapabilities && result.hostCapabilities.sandbox && result.hostCapabilities.sandbox.csp) || "not reported");
+    } catch (error) {
+      note("host_handshake", "failed: " + error.message);
+    }
+    resize();
+  }
+
+  cameraBtn.onclick = async () => {
+    cameraBtn.disabled = true;
+    for (const [label, constraints] of [["camera_and_mic", { video: true, audio: true }], ["mic_only", { audio: true }], ["camera_only", { video: true }]]) {
+      try {
+        const got = await navigator.mediaDevices.getUserMedia(constraints);
+        note(label, "GRANTED (" + got.getTracks().map((track) => track.kind).join("+") + ")");
+        if (!stream) { stream = got; preview.srcObject = got; recordBtn.disabled = false; }
+        else got.getTracks().forEach((track) => track.stop());
+        if (label === "camera_and_mic") break;
+      } catch (error) {
+        note(label, "BLOCKED: " + error.name + " - " + error.message);
+      }
+    }
+    cameraBtn.disabled = false;
+  };
+
+  recordBtn.onclick = () => {
+    recordBtn.disabled = true;
+    try {
+      const chunks = [];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: recorder.mimeType });
+        note("recording", `OK: ${Math.round(blob.size / 1024)} KB, ${recorder.mimeType}`);
+        preview.srcObject = null; preview.muted = false; preview.controls = true;
+        preview.src = URL.createObjectURL(blob);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      recorder.start();
+      note("recording", "recording 5 seconds...");
+      setTimeout(() => recorder.stop(), 5000);
+    } catch (error) {
+      note("recording", "FAILED: " + error.name + " - " + error.message);
+      recordBtn.disabled = false;
+    }
+  };
+
+  document.getElementById("report").onclick = () => {
+    const text = "Recorder test result:\n" + logEl.textContent;
+    request("ui/message", { role: "user", content: { type: "text", text } }).catch((error) => note("send_to_chat", "failed: " + error.message + " (copy the text above instead)"));
+  };
+
+  start();
+})();
+</script>
+</body>
+</html>
