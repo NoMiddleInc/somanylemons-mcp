@@ -54,6 +54,44 @@ WRITE = ToolAnnotations(
 CANCEL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True
 )
+CREATE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False
+)
+SAVE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
+)
+
+CampaignName = Annotated[str, Field(min_length=1, max_length=120, description="Short campaign name, such as Texas producers or Instagram carousels.")]
+Objective = Annotated[str, Field(max_length=10000, description="The customer's objective and who to reach, in their own words.")]
+
+
+class CampaignAgentInput(BaseModel):
+    agent: Annotated[
+        Literal["prospect_keeper", "pipeline_piper", "recording", "scheduling"],
+        Field(description="prospect_keeper builds the Golden List, pipeline_piper is the Email Agent, recording turns recordings into clips, scheduling posts them."),
+    ]
+    is_enabled: bool | None = None
+    settings: Annotated[
+        dict[str, JsonValue] | None,
+        Field(description=(
+            "Optional. prospect_keeper: daily_prospect_count 1-50. pipeline_piper: none. "
+            "recording: format clips or carousel, clip_count 1-5, platforms (linkedin, instagram, tiktok, youtube). "
+            "scheduling: posts_per_week 1-50, platforms."
+        )),
+    ] = None
+
+
+CampaignAgents = Annotated[list[CampaignAgentInput], Field(min_length=1, max_length=4)]
+
+
+def campaign_page(campaign_id) -> str:
+    return f"{SITE_URL}/agent/{campaign_id}"
+
+
+def with_campaign_link(campaign):
+    if isinstance(campaign, dict) and campaign.get("id"):
+        return {"view_in_producerspark": campaign_page(campaign["id"]), **campaign}
+    return campaign
 
 
 def agency_payload(agencies):
@@ -458,6 +496,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link and the reply_must_end_with line. "
             "For new background research submit the original request verbatim through create_business_research_request without spec or host-selected companies. The backend owns interpretation and background execution for all channels. Preserve its acknowledgment faithfully. "
             "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
+            "Campaigns hold what the customer wants their agents to accomplish. When get_started shows has_campaign false, ask for the objective and who to reach, call create_campaign, then continue. "
+            "When a user states a goal, such as 3 Instagram carousels a week or book meetings with Texas producers, save it first with create_campaign, or with update_campaign on the campaign from list_campaigns, then continue with the agent tools. "
             "Present the returned message faithfully, preserving its meaning, paragraph breaks and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Use the backend acknowledgment and concise progress wording. Use Markdown tables for contact results. Contact results use Name | Company | Title | Email | LinkedIn, one person per row. Preserve recorded uncertainty in Email status or Source columns when needed. Use Pending for unfinished or blocked lookup; Not found only after completed enrichment without a result. Progress, blockers, questions and next actions use Task | Status | Next step. Downloads use File | Status with clickable links. Honor an explicit request for another format. Omit internal steps and repeated caveats. "
             "For an ICP definition or targeting criteria use get_my_icp. For an ICP LIST, main list, golden list, prospect list or download my list use get_prospect_list. Discover all accessible lists with list_golden_lists and read every saved contact with read_golden_list. "
@@ -499,7 +539,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(title="Get started with ProducerSpark", annotations=READ)
     async def get_started() -> dict:
-        """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Always end with results_url as a clickable Markdown link labelled Open ProducerSpark: it is where they see their agent, free prospects left, every search and its Excel download. Give upgrade_url as a link labelled See plans whenever plans come up. Reads only; nothing is searched or charged."""
+        """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests, campaigns (each with its name, objective, Golden List and agents), has_campaign and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. When has_campaign is false, ask what they want their agents to accomplish and who they want to reach, save the answer with create_campaign, then continue with their request; do this before any search. When has_campaign is true, the default campaign's objective is what the agents are working toward. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Always end with results_url as a clickable Markdown link labelled Open ProducerSpark: it is where they see their agent, free prospects left, every search and its Excel download. Give upgrade_url as a link labelled See plans whenever plans come up. Reads only; nothing is searched or charged."""
         return await api.request("GET", "/api/v1/agent-tasks/getting-started")
 
     @server.tool(annotations=READ)
@@ -1027,6 +1067,45 @@ def create_server(api: TaskApiClient) -> FastMCP:
         """Read all saved main golden-list contacts, emails, verification and enrichment fields in ONE call. This is the canonical main list, not a research-task workbook. Defaults to the main list; campaign_id chooses another accessible list. Set include_rows=false for counts only. Never starts research, enrollment or sends."""
         return await api.request("GET", "/api/v1/agent-tasks/golden-lists/read",
                                  params={k: v for k, v in {"campaign_id": campaign_id, "config_id": config_id, "include_rows": include_rows}.items() if v is not None})
+
+    @server.tool(annotations=READ)
+    async def list_campaigns() -> dict:
+        """List my campaigns: each one's name, objective, status, is_default, Golden List and agents with their settings. A campaign holds what the customer wants their agents to accomplish; the Prospect and Email agents work from the default campaign. Call it before update_campaign to get a real campaign_id. Show each campaign's view_in_producerspark as a clickable link. Reads only."""
+        data = await api.request("GET", "/api/v1/agent-tasks/campaigns")
+        if isinstance(data, dict) and isinstance(data.get("campaigns"), list):
+            data = {**data, "campaigns": [with_campaign_link(item) for item in data["campaigns"]]}
+        return data
+
+    @server.tool(annotations=CREATE)
+    async def create_campaign(
+        name: CampaignName,
+        objective: Objective,
+        agents: CampaignAgents,
+        golden_list_id: PositiveId | None = None,
+    ) -> dict:
+        """Save a new campaign with the customer's objective in their words, such as 3 Instagram carousels a week or book meetings with Texas producers. Pick agents only from the agents get_started lists for this account. golden_list_id comes from list_golden_lists and is required when prospect_keeper or pipeline_piper is in agents. Call it once per goal: after a failed or uncertain call, check list_campaigns before creating again. A 400 error carries a plain reason; tell the user and fix the input. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
+        body = {"name": name, "objective": objective,
+                "agents": [item.model_dump(exclude_none=True) for item in agents]}
+        if golden_list_id is not None:
+            body["golden_list_id"] = golden_list_id
+        return with_campaign_link(await api.request("POST", "/api/v1/agent-tasks/campaigns", body=body))
+
+    @server.tool(annotations=SAVE)
+    async def update_campaign(
+        campaign_id: PositiveId,
+        name: CampaignName | None = None,
+        objective: Objective | None = None,
+        agents: CampaignAgents | None = None,
+        golden_list_id: PositiveId | None = None,
+    ) -> dict:
+        """Change a campaign's name, objective, agents or Golden List. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; agents replaces the campaign's agent list, so include every agent it should keep. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
+        body = {key: value for key, value in {
+            "name": name, "objective": objective, "golden_list_id": golden_list_id,
+            "agents": None if agents is None else [item.model_dump(exclude_none=True) for item in agents],
+        }.items() if value is not None}
+        return with_campaign_link(
+            await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
+        )
 
     register_agent_tools(server, api)
     register_recorder(server, api)

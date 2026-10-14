@@ -4,7 +4,7 @@ from .task_tools.agent_tools import AGENT_TOOL_NAMES
 from .task_tools.recorder import RECORDER_TOOL_NAMES
 from .task_tools.server import create_server
 
-TASK_TOOL_NAMES = frozenset({"get_started", "get_email_agent_status", "ask_email_agent", "list_tasks", "get_task", "get_research_answer", "wait_for_task", "watch_research", "find_people", "deep_search", "full_list", "create_business_research_request", "create_research_request", "create_conference_research_request", "request_agency_first15_milestone", "get_agency_milestone", "supply_business_inputs", "supply_agency_names", "pause_task", "resume_task", "cancel_task", "retry_task", "list_schedules", "create_research_schedule", "set_schedule_enabled", "get_task_artifact", "read_task_spreadsheet", "get_my_icp", "get_prospect_list", "list_golden_lists", "read_golden_list"}) | AGENT_TOOL_NAMES | RECORDER_TOOL_NAMES
+TASK_TOOL_NAMES = frozenset({"get_started", "get_email_agent_status", "ask_email_agent", "list_tasks", "get_task", "get_research_answer", "wait_for_task", "watch_research", "find_people", "deep_search", "full_list", "create_business_research_request", "create_research_request", "create_conference_research_request", "request_agency_first15_milestone", "get_agency_milestone", "supply_business_inputs", "supply_agency_names", "pause_task", "resume_task", "cancel_task", "retry_task", "list_schedules", "create_research_schedule", "set_schedule_enabled", "get_task_artifact", "read_task_spreadsheet", "get_my_icp", "get_prospect_list", "list_golden_lists", "read_golden_list", "list_campaigns", "create_campaign", "update_campaign"}) | AGENT_TOOL_NAMES | RECORDER_TOOL_NAMES
 
 SCHEMA_SERVER = create_server(TaskApiClient(TaskApiConfig("https://schema.invalid", "schema-only")))
 
