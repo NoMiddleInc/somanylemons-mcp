@@ -8,6 +8,8 @@ from somanylemons_mcp.task_bridge import TASK_TOOL_NAMES, invoke_task, task_sche
 from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
+KEY = "33333333-3333-4333-8333-333333333333"
+
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Book meetings with Texas producers",
     "status": "active", "is_default": True,
@@ -44,9 +46,9 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("—", tools[name].description)
         self.assertTrue(tools["list_campaigns"].annotations.readOnlyHint)
         self.assertFalse(tools["create_campaign"].annotations.readOnlyHint)
-        self.assertFalse(tools["create_campaign"].annotations.idempotentHint)
+        self.assertTrue(tools["create_campaign"].annotations.idempotentHint)
         self.assertTrue(tools["update_campaign"].annotations.idempotentHint)
-        self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"name", "objective", "agents"})
+        self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"name", "objective", "agents", "idempotency_key"})
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
 
     async def test_list_campaigns_reads_and_links_each_campaign(self):
@@ -61,14 +63,14 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
             "name": "Texas producers", "objective": "Book meetings with Texas producers",
             "agents": [{"agent": "prospect_keeper", "settings": {"daily_prospect_count": 10}},
                        {"agent": "pipeline_piper"}],
-            "golden_list_id": 44,
+            "golden_list_id": 44, "idempotency_key": KEY,
         }, {"data": CAMPAIGN}, status=201)
         self.assertEqual((calls[0].method, calls[0].url.path), ("POST", "/api/v1/agent-tasks/campaigns"))
         self.assertEqual(json.loads(calls[0].content), {
             "name": "Texas producers", "objective": "Book meetings with Texas producers",
             "agents": [{"agent": "prospect_keeper", "settings": {"daily_prospect_count": 10}},
                        {"agent": "pipeline_piper"}],
-            "golden_list_id": 44,
+            "golden_list_id": 44, "creation_key": KEY,
         })
         self.assertEqual(self._payload(result)["view_in_producerspark"], "https://producerspark.com/agent/12")
 
@@ -80,14 +82,14 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json={"data": {}})
 
         with self.assertRaises(Exception):
-            await invoke_task("create_campaign", {"name": "x", "objective": "y", "agents": [{"agent": "email"}]},
+            await invoke_task("create_campaign", {"name": "x", "objective": "y", "agents": [{"agent": "email"}], "idempotency_key": KEY},
                               api_url="https://example.com", api_key="owner", transport=httpx.MockTransport(handler))
         self.assertEqual(calls, [])
 
     async def test_create_campaign_passes_the_backend_reason_through(self):
         with self.assertRaises(Exception) as raised:
             await self._call("create_campaign", {
-                "name": "Texas", "objective": "Book meetings", "agents": [{"agent": "prospect_keeper"}],
+                "name": "Texas", "objective": "Book meetings", "agents": [{"agent": "prospect_keeper"}], "idempotency_key": KEY,
             }, {"detail": "Add a Golden List before enabling the Prospect agent."}, status=400)
         text = str(raised.exception)
         self.assertIn("HTTP 400", text)
@@ -106,6 +108,32 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         payload = self._payload(result)
         self.assertEqual(payload["objective"], "3 Instagram carousels a week")
         self.assertEqual(payload["view_in_producerspark"], "https://producerspark.com/agent/12")
+
+    async def test_create_campaign_requires_a_key_and_repeats_it(self):
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": CAMPAIGN})
+
+        arguments = {"name": "Texas", "objective": "Book meetings", "agents": [{"agent": "recording"}]}
+        with self.assertRaises(Exception):
+            await invoke_task("create_campaign", arguments, api_url="https://example.com", api_key="owner",
+                              transport=httpx.MockTransport(handler))
+        self.assertEqual(calls, [])
+        for _ in range(2):
+            await invoke_task("create_campaign", {**arguments, "idempotency_key": KEY}, api_url="https://example.com",
+                              api_key="owner", transport=httpx.MockTransport(handler))
+        self.assertEqual([json.loads(call.content)["creation_key"] for call in calls], [KEY, KEY])
+
+    async def test_update_campaign_clears_the_golden_list_only_when_asked(self):
+        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "clear_golden_list": True}, {"data": CAMPAIGN})
+        self.assertEqual(json.loads(calls[0].content), {"golden_list_id": None})
+        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "name": "New"}, {"data": CAMPAIGN})
+        self.assertEqual(json.loads(calls[0].content), {"name": "New"})
+        with self.assertRaises(Exception):
+            await self._call("update_campaign", {"campaign_id": 12, "golden_list_id": 44, "clear_golden_list": True},
+                             {"data": CAMPAIGN})
 
     async def test_update_campaign_passes_the_backend_reason_through(self):
         with self.assertRaises(Exception) as raised:

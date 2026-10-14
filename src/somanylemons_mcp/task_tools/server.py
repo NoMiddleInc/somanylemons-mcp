@@ -54,9 +54,6 @@ WRITE = ToolAnnotations(
 CANCEL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True
 )
-CREATE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False
-)
 SAVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
 )
@@ -1076,16 +1073,18 @@ def create_server(api: TaskApiClient) -> FastMCP:
             data = {**data, "campaigns": [with_campaign_link(item) for item in data["campaigns"]]}
         return data
 
-    @server.tool(annotations=CREATE)
+    @server.tool(annotations=SAVE)
     async def create_campaign(
         name: CampaignName,
         objective: Objective,
         agents: CampaignAgents,
+        idempotency_key: UUID,
         golden_list_id: PositiveId | None = None,
     ) -> dict:
-        """Save a new campaign with the customer's objective in their words, such as 3 Instagram carousels a week or book meetings with Texas producers. Pick agents only from the agents get_started lists for this account. golden_list_id comes from list_golden_lists and is required when prospect_keeper or pipeline_piper is in agents. Call it once per goal: after a failed or uncertain call, check list_campaigns before creating again. A 400 error carries a plain reason; tell the user and fix the input. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
+        """Save a new campaign with the customer's objective in their words, such as 3 Instagram carousels a week or book meetings with Texas producers. Pick agents only from the agents get_started lists for this account. golden_list_id comes from list_golden_lists and is required when prospect_keeper or pipeline_piper is in agents. Generate one UUID idempotency_key per new goal and reuse it after a failed or uncertain call: the same key returns the campaign already saved instead of creating another. A 400 error carries a plain reason; tell the user and fix the input. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
         body = {"name": name, "objective": objective,
-                "agents": [item.model_dump(exclude_none=True) for item in agents]}
+                "agents": [item.model_dump(exclude_none=True) for item in agents],
+                "creation_key": str(idempotency_key)}
         if golden_list_id is not None:
             body["golden_list_id"] = golden_list_id
         return with_campaign_link(await api.request("POST", "/api/v1/agent-tasks/campaigns", body=body))
@@ -1097,12 +1096,17 @@ def create_server(api: TaskApiClient) -> FastMCP:
         objective: Objective | None = None,
         agents: CampaignAgents | None = None,
         golden_list_id: PositiveId | None = None,
+        clear_golden_list: bool = False,
     ) -> dict:
-        """Change a campaign's name, objective, agents or Golden List. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; agents replaces the campaign's agent list, so include every agent it should keep. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
+        """Change a campaign's name, objective, agents or Golden List. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; leaving golden_list_id out keeps the current list, and clear_golden_list=true removes it. agents replaces the campaign's agent list, so include every agent it should keep. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves settings only; nothing is searched, sent, posted or charged."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "golden_list_id": golden_list_id,
             "agents": None if agents is None else [item.model_dump(exclude_none=True) for item in agents],
         }.items() if value is not None}
+        if clear_golden_list:
+            if golden_list_id is not None:
+                raise TaskApiError("Pass golden_list_id or clear_golden_list, not both.")
+            body["golden_list_id"] = None
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
         )
