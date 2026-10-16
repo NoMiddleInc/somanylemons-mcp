@@ -9,12 +9,14 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "check_campaign_item", "suggest_campaign_signals", "activate_campaign", "signal_search", "get_prospect_intelligence")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "check_campaign_item", "list_campaign_signal_suggestions", "decide_campaign_signal", "activate_campaign", "signal_search", "get_prospect_intelligence")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
     "targeting": "Independent P&C agencies in Texas, owners and producers",
-    "signals": "New producer hires, carrier appointments", "signal_items": [], "offering": "Outsourced marketing for agencies",
+    "signals": "New producer hires, carrier appointments", "signal_items": [],
+    "signal_suggestions": {"items": [], "current": True, "pending": 0, "approved": 0, "rejected": 0},
+    "offering": "Outsourced marketing for agencies",
     "messaging": "Short, mention the hire, no hype",
     "status": "draft", "is_default": True, "activated_at": None,
     "golden_list": {"id": 44, "name": "Texas producers", "prospect_count": 0},
@@ -60,18 +62,20 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools["activate_campaign"].annotations.destructiveHint)
         self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "targeting"})
         self.assertIn("three steps", tools["create_campaign"].description)
-        self.assertIn("all three steps, targeting, offering and signals", tools["activate_campaign"].description)
+        self.assertIn("all three steps, targeting, signals and offering", tools["activate_campaign"].description)
         self.assertTrue(tools["check_campaign_item"].annotations.readOnlyHint)
-        self.assertTrue(tools["suggest_campaign_signals"].annotations.readOnlyHint)
+        self.assertTrue(tools["list_campaign_signal_suggestions"].annotations.readOnlyHint)
+        self.assertFalse(tools["decide_campaign_signal"].annotations.readOnlyHint)
         self.assertEqual(set(tools["check_campaign_item"].inputSchema["required"]), {"field", "text"})
-        self.assertEqual(tools["suggest_campaign_signals"].inputSchema.get("required", []), [])
+        self.assertEqual(tools["list_campaign_signal_suggestions"].inputSchema["required"], ["campaign_id"])
+        self.assertEqual(set(tools["decide_campaign_signal"].inputSchema["required"]), {"campaign_id", "key", "decision"})
         self.assertNotIn("five steps", tools["activate_campaign"].description)
         self.assertTrue(tools["get_prospect_intelligence"].annotations.readOnlyHint)
         self.assertFalse(tools["signal_search"].annotations.readOnlyHint)
         self.assertEqual(tools["signal_search"].inputSchema["required"], ["request"])
         self.assertEqual(tools["get_prospect_intelligence"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["create_campaign"].inputSchema["properties"]),
-                         {"idempotency_key", "objective", "targeting", "signals", "signal_items", "offering", "messaging", "name"})
+                         {"idempotency_key", "objective", "targeting", "signals", "offering", "messaging", "name"})
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
                          {"campaign_id", "name", "objective", "targeting", "signals", "signal_items", "offering", "messaging"})
@@ -213,20 +217,30 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(calls[0].content), {"field": "targeting", "text": "CEOs of technomlog in Chicago", "offering": "Content"})
         self.assertEqual(self._payload(result), reading)
 
-    async def test_suggest_campaign_signals_researches_or_reads_text(self):
-        signals = {"signals": [{"key": "no_blog_year", "name": "No blog post in a year", "question": "No post in 12 months?", "why": "Stale."}]}
-        calls, result = await self._call("suggest_campaign_signals", {"targeting": "CEOs in Chicago", "offering": "Content", "exclude": ["hiring"]}, signals)
-        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/assist/signals")
-        self.assertEqual(json.loads(calls[0].content), {"targeting": "CEOs in Chicago", "offering": "Content", "exclude": ["hiring"]})
-        self.assertEqual(self._payload(result), signals)
-        calls, _ = await self._call("suggest_campaign_signals", {"text": "they have no blog"}, signals)
-        self.assertEqual(json.loads(calls[0].content), {"text": "they have no blog"})
+    async def test_list_campaign_signal_suggestions_reads_and_asks_for_more(self):
+        body = {"success": True, "data": {"items": [{"key": "no_blog_year", "name": "No blog post in a year", "question": "No post in 12 months?",
+                                                      "why": "Stale.", "revenue_angle": "Offer a restart.", "confidence": "high", "status": "pending"}],
+                                           "current": True, "pending": 1, "approved": 0, "rejected": 0}}
+        calls, result = await self._call("list_campaign_signal_suggestions", {"campaign_id": 12}, body)
+        self.assertEqual(calls[0].method, "GET")
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/12/suggestions")
+        self.assertEqual(calls[0].url.params.get("more"), None)
+        self.assertEqual(self._payload(result)["pending"], 1)
+        calls, _ = await self._call("list_campaign_signal_suggestions", {"campaign_id": 12, "more": True}, body)
+        self.assertEqual(calls[0].url.params.get("more"), "true")
 
-    async def test_update_campaign_saves_the_approved_signals(self):
-        items = [{"key": "no_blog_year", "name": "No blog post in a year", "question": "No post in 12 months?", "why": "Stale."}]
-        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "signal_items": items}, {"success": True, "data": {**CAMPAIGN, "signal_items": items}})
+    async def test_decide_campaign_signal_posts_the_answer(self):
+        calls, result = await self._call("decide_campaign_signal", {"campaign_id": 12, "key": "no_blog_year", "decision": "approve"},
+                                         {"success": True, "data": CAMPAIGN})
+        self.assertEqual(calls[0].method, "POST")
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/12/suggestions/no_blog_year")
+        self.assertEqual(json.loads(calls[0].content), {"decision": "approve"})
+        self.assertEqual(self._payload(result)["view_in_producerspark"], "https://producerspark.com/agent/12")
+
+    async def test_update_campaign_keeps_or_removes_approved_signals(self):
+        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "signal_items": []}, {"success": True, "data": CAMPAIGN})
         self.assertEqual(calls[0].method, "PATCH")
-        self.assertEqual(json.loads(calls[0].content), {"signal_items": items})
+        self.assertEqual(json.loads(calls[0].content), {"signal_items": []})
 
     async def test_get_started_passes_campaigns_through(self):
         data = {"plan": "free_trial", "can_search_people": True, "has_campaign": True, "campaigns": [CAMPAIGN],
@@ -250,7 +264,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
     def test_instructions_walk_through_create_fill_activate(self):
         instructions = create_server(TaskApiClient(TaskApiConfig("https://example.com", "k"))).instructions
         for text in ("has_campaign false", "create_campaign", "update_campaign", "activate_campaign",
-                     "check_campaign_item", "suggest_campaign_signals", "signal_items", "will_happen"):
+                     "check_campaign_item", "list_campaign_signal_suggestions", "decide_campaign_signal", "will_happen"):
             self.assertIn(text, instructions)
         self.assertNotIn("Instagram carousels", instructions)
 
