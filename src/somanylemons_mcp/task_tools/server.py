@@ -64,8 +64,10 @@ ACTIVATE = ToolAnnotations(
 CampaignName = Annotated[str, Field(min_length=1, max_length=120, description="Short campaign name. Leave out to start it from the first line of the targeting.")]
 CampaignObjective = Annotated[str, Field(min_length=1, max_length=200, description="Optional: what the campaign should get done, such as Get leads or Book intro meetings.")]
 CampaignTargeting = Annotated[str, Field(min_length=1, max_length=10000, description="Step 1, the prospects' industry and titles: target industry, company size, titles and places, in the customer's words.")]
-CampaignSignals = Annotated[str, Field(max_length=10000, description="Step 2, target signals and offerings: what tells the customer someone is worth reaching now, and what they offer them, in their words.")]
-CampaignOffering = Annotated[str, Field(max_length=10000, description="Optional: the service the customer sells or provides, when given separately from the signals.")]
+CampaignOffering = Annotated[str, Field(max_length=10000, description="Step 2, what they offer: the service the customer sells or provides to these people, in their words.")]
+CampaignSignals = Annotated[str, Field(max_length=10000, description="Step 3 as text, only when the customer dictates their signals outright: what tells them a company is worth reaching now. Prefer signal_items approved one by one through suggest_campaign_signals; sending signals text clears any approved list.")]
+CampaignSignalItems = Annotated[list[dict], Field(max_length=12, description="Step 3, the signals the customer approved one by one: each exactly as suggest_campaign_signals returned it, with key, name, question and why. Replaces the whole approved list.")]
+CampaignField = Annotated[str, Field(pattern="^(targeting|offering|signals)$", description="Which box to read back: targeting, offering or signals.")]
 CampaignMessaging = Annotated[str, Field(max_length=10000, description="Optional: how each message should be tailored to the person: tone, what to mention, what to avoid.")]
 
 
@@ -482,7 +484,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link and the reply_must_end_with line. "
             "For new background research submit the original request verbatim through create_business_research_request without spec or host-selected companies. The backend owns interpretation and background execution for all channels. Preserve its acknowledgment faithfully. "
             "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
-            "Campaigns organize the account: each has five steps (objective, targeting, signals, offering, messaging) and one Golden List of prospects. When get_started shows has_campaign false, ask for the objective and who to reach, save them with create_campaign, then offer to fill in signals, offering and messaging with update_campaign, then offer to activate it. "
+            "Campaigns organize the account: each starts from three steps in the customer's words (targeting: industry and titles; offering: what they offer; signals: what makes a company worth reaching now) plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving the targeting or the offering, call check_campaign_item and say back its reading, issues and questions, offer its suggested_text, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the offering. Then call suggest_campaign_signals and present the signals one at a time, each with its question and why, asking approve or skip; a signal the customer writes goes through suggest_campaign_signals with text first. Save the approved ones with update_campaign signal_items, then offer to activate it. "
             "When a user states a new goal or changes who to reach, save it with create_campaign, or with update_campaign on a campaign from list_campaigns. activate_campaign starts finding prospects and signals and prepares messaging for review; it never sends. Its first call returns needs_confirmation and will_happen: show will_happen word for word, wait for a clear yes, then call again with confirmation. "
             "Present the returned message faithfully, preserving its meaning, paragraph breaks and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Use the backend acknowledgment and concise progress wording. Use Markdown tables for contact results. Contact results use Name | Company | Title | Email | LinkedIn, one person per row. Preserve recorded uncertainty in Email status or Source columns when needed. Use Pending for unfinished or blocked lookup; Not found only after completed enrichment without a result. Progress, blockers, questions and next actions use Task | Status | Next step. Downloads use File | Status with clickable links. Honor an explicit request for another format. Omit internal steps and repeated caveats. "
@@ -525,7 +527,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(title="Get started with ProducerSpark", annotations=READ)
     async def get_started() -> dict:
-        """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests, campaigns (each with its name, status, five steps and Golden List), has_campaign and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. When has_campaign is false, ask for their objective and who they want to reach, save them with create_campaign, then offer to fill in the target signals, what they offer and the personalized messaging with update_campaign, then offer to activate it with activate_campaign; do this before any search. When has_campaign is true, the default campaign is what the agents are working toward. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Always end with results_url as a clickable Markdown link labelled Open ProducerSpark: it is where they see their agent, free prospects left, every search and its Excel download. Give upgrade_url as a link labelled See plans whenever plans come up. Reads only; nothing is searched or charged."""
+        """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests, campaigns (each with its name, status, three steps and Golden List), has_campaign and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. When has_campaign is false, ask who they want to reach, read it back with check_campaign_item, save it with create_campaign after a clear yes, then do the same for what they offer with update_campaign, then suggest signals with suggest_campaign_signals and save the ones they approve one by one, then offer to activate it with activate_campaign; do this before any search. When has_campaign is true, the default campaign is what the agents are working toward. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Always end with results_url as a clickable Markdown link labelled Open ProducerSpark: it is where they see their agent, free prospects left, every search and its Excel download. Give upgrade_url as a link labelled See plans whenever plans come up. Reads only; nothing is searched or charged."""
         return await api.request("GET", "/api/v1/agent-tasks/getting-started")
 
     @server.tool(annotations=READ)
@@ -1056,7 +1058,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
 
     @server.tool(annotations=READ)
     async def list_campaigns() -> dict:
-        """List my campaigns. Each has its two steps (targeting: the prospects' industry and titles; signals: target signals and offerings), optional objective, offering and messaging, name, status (draft, active or paused), is_default, its Golden List and results: prospects, signals, messages prepared and intelligence (ready, no_signal, queued, running, held, failed, pending prospects of signal research). The Golden List is reached through its campaign. Call it before update_campaign, activate_campaign, signal_search or get_prospect_intelligence to get a real campaign_id. Show each campaign's view_in_producerspark as a clickable link. Reads only."""
+        """List my campaigns. Each has its three steps (targeting: the prospects' industry and titles; offering: what they offer; signals: the target signals as text, with signal_items as the list the customer approved one by one), optional objective and messaging, name, status (draft, active or paused), is_default, its Golden List and results: prospects, signals, messages prepared and intelligence (ready, no_signal, queued, running, held, failed, pending prospects of signal research). The Golden List is reached through its campaign. Call it before update_campaign, activate_campaign, signal_search or get_prospect_intelligence to get a real campaign_id. Show each campaign's view_in_producerspark as a clickable link. Reads only."""
         data = await api.request("GET", "/api/v1/agent-tasks/campaigns")
         if isinstance(data, dict) and isinstance(data.get("campaigns"), list):
             data = {**data, "campaigns": [with_campaign_link(item) for item in data["campaigns"]]}
@@ -1066,16 +1068,17 @@ def create_server(api: TaskApiClient) -> FastMCP:
     async def create_campaign(
         idempotency_key: UUID,
         targeting: CampaignTargeting,
+        offering: CampaignOffering | None = None,
+        signal_items: CampaignSignalItems | None = None,
         signals: CampaignSignals | None = None,
         objective: CampaignObjective | None = None,
-        offering: CampaignOffering | None = None,
         messaging: CampaignMessaging | None = None,
         name: CampaignName | None = None,
     ) -> dict:
-        """Save a new campaign as a draft with its Golden List. A campaign starts from two steps in the customer's own words: targeting (the prospects' industry and titles) is required to save, and signals (target signals and offerings) is required before activation; add it now or later with update_campaign. objective, offering and messaging are optional detail. Generate one UUID idempotency_key per new campaign and reuse it after a failed or uncertain call: the same key returns the campaign already saved instead of creating another. A 400 error carries a plain reason; tell the user and fix the input. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged until the campaign is activated with activate_campaign."""
+        """Save a new campaign as a draft with its Golden List. A campaign starts from three steps in the customer's own words: targeting (the prospects' industry and titles) is required to save; offering (what they offer) and signals (approved one by one as signal_items) are required before activation; add them now or later with update_campaign. Read the targeting back with check_campaign_item and get a clear yes before saving it. objective and messaging are optional detail. Generate one UUID idempotency_key per new campaign and reuse it after a failed or uncertain call: the same key returns the campaign already saved instead of creating another. A 400 error carries a plain reason; tell the user and fix the input. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged until the campaign is activated with activate_campaign."""
         body = {key: value for key, value in {
-            "name": name, "objective": objective, "targeting": targeting,
-            "signals": signals, "offering": offering, "messaging": messaging,
+            "name": name, "objective": objective, "targeting": targeting, "signals": signals,
+            "signal_items": signal_items, "offering": offering, "messaging": messaging,
         }.items() if value is not None}
         body["creation_key"] = str(idempotency_key)
         return with_campaign_link(await api.request("POST", "/api/v1/agent-tasks/campaigns", body=body))
@@ -1086,22 +1089,49 @@ def create_server(api: TaskApiClient) -> FastMCP:
         name: CampaignName | None = None,
         objective: CampaignObjective | None = None,
         targeting: CampaignTargeting | None = None,
-        signals: CampaignSignals | None = None,
         offering: CampaignOffering | None = None,
+        signal_items: CampaignSignalItems | None = None,
+        signals: CampaignSignals | None = None,
         messaging: CampaignMessaging | None = None,
     ) -> dict:
-        """Change a campaign's name, its two steps (targeting, signals) or its optional objective, offering and messaging. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; anything left out stays as it is. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged."""
+        """Change a campaign's name, its three steps (targeting, offering, signal_items) or its optional objective and messaging. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; anything left out stays as it is. Read a changed targeting or offering back with check_campaign_item and get a clear yes first. signal_items replaces the whole approved list, so send the kept ones plus the newly approved ones. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged."""
         body = {key: value for key, value in {
-            "name": name, "objective": objective, "targeting": targeting,
-            "signals": signals, "offering": offering, "messaging": messaging,
+            "name": name, "objective": objective, "targeting": targeting, "signals": signals,
+            "signal_items": signal_items, "offering": offering, "messaging": messaging,
         }.items() if value is not None}
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
         )
 
+    @server.tool(annotations=READ)
+    async def check_campaign_item(
+        field: CampaignField,
+        text: Annotated[str, Field(min_length=1, max_length=5000, description="What the customer wrote for that box, verbatim.")],
+        targeting: CampaignTargeting | None = None,
+        offering: CampaignOffering | None = None,
+    ) -> dict:
+        """Read one campaign box back before it is saved, the way autocorrect asks whether this is what you meant. Call it on the customer's targeting or offering before create_campaign or update_campaign, passing the other box when known. It returns reading (what was understood), issues (typos, vague or missing parts), questions (at most two worth answering), suggested_text (a cleaned wording, empty when the text is fine) and confident. Say the reading back, list the issues and questions, offer the suggested wording, and ask whether that is what they want; save their chosen wording only after a clear yes. Reads only; nothing is saved."""
+        body = {key: value for key, value in {
+            "field": field, "text": text, "targeting": targeting, "offering": offering,
+        }.items() if value is not None}
+        return await api.request("POST", "/api/v1/agent-tasks/campaigns/assist/check", body=body)
+
+    @server.tool(annotations=READ)
+    async def suggest_campaign_signals(
+        targeting: CampaignTargeting | None = None,
+        offering: CampaignOffering | None = None,
+        text: Annotated[str, Field(min_length=1, max_length=5000, description="A signal in the customer's own words, to turn into one to three signals without research. Leave out to research suggestions.")] | None = None,
+        exclude: Annotated[list[str], Field(max_length=50, description="Keys of signals already approved or skipped, so they are not suggested again.")] | None = None,
+    ) -> dict:
+        """Signals for the customer to approve one by one. Without text, it researches the targeting and the offering on the web and returns up to eight observable signals, best first, each with key, name, question (the yes/no question a researcher answers from public facts) and why. With text, it turns only what the customer wrote into one to three signals. Present them one at a time: the name, the question and why, then ask approve or skip; never save a signal they did not approve. Keep the approved ones exactly as returned and save them with update_campaign signal_items. Call again with exclude listing every approved and skipped key when they want more. Takes up to a minute with research. Reads only; nothing is saved or charged."""
+        body = {key: value for key, value in {
+            "targeting": targeting, "offering": offering, "text": text, "exclude": exclude,
+        }.items() if value is not None}
+        return await api.request("POST", "/api/v1/agent-tasks/campaigns/assist/signals", body=body)
+
     @server.tool(annotations=ACTIVATE)
     async def activate_campaign(campaign_id: PositiveId, confirmation: Confirmation | None = None) -> dict:
-        """Activate a campaign: find its first 100 prospects and add them to its Golden List, then research each one against the campaign's target signals and write a custom first email, which the customer reviews on the Golden List and which replaces Email 1 when they enroll that person. One credit per prospect found and one per prospect researched; nothing is sent and nobody is enrolled. Activation needs both steps, targeting and signals; a 400 error names the missing step, so ask the user for it, save it with update_campaign and try again. The first call activates nothing: it returns needs_confirmation, will_happen and confirmation. Show will_happen to the user word for word, for example Start finding prospects and signals for Texas producers and prepare messaging for your review, wait for a clear yes, then call again with the same campaign_id and that confirmation. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
+        """Activate a campaign: find its first 100 prospects and add them to its Golden List, then research each one against the campaign's target signals and write a custom first email, which the customer reviews on the Golden List and which replaces Email 1 when they enroll that person. One credit per prospect found and one per prospect researched; nothing is sent and nobody is enrolled. Activation needs all three steps, targeting, offering and signals; a 400 error names the missing step, so ask the user for it, read it back with check_campaign_item or approve signals with suggest_campaign_signals, save it with update_campaign and try again. The first call activates nothing: it returns needs_confirmation, will_happen and confirmation. Show will_happen to the user word for word, for example Start finding prospects and signals for Texas producers and prepare messaging for your review, wait for a clear yes, then call again with the same campaign_id and that confirmation. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
         body = {"confirmation": confirmation} if confirmation is not None else {}
         return with_campaign_link(
             await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/activate", body=body)

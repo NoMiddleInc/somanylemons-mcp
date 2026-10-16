@@ -9,12 +9,12 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "activate_campaign", "signal_search", "get_prospect_intelligence")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "check_campaign_item", "suggest_campaign_signals", "activate_campaign", "signal_search", "get_prospect_intelligence")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
     "targeting": "Independent P&C agencies in Texas, owners and producers",
-    "signals": "New producer hires, carrier appointments", "offering": "Outsourced marketing for agencies",
+    "signals": "New producer hires, carrier appointments", "signal_items": [], "offering": "Outsourced marketing for agencies",
     "messaging": "Short, mention the hire, no hype",
     "status": "draft", "is_default": True, "activated_at": None,
     "golden_list": {"id": 44, "name": "Texas producers", "prospect_count": 0},
@@ -59,18 +59,22 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools["activate_campaign"].annotations.readOnlyHint)
         self.assertFalse(tools["activate_campaign"].annotations.destructiveHint)
         self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "targeting"})
-        self.assertIn("two steps", tools["create_campaign"].description)
-        self.assertIn("both steps, targeting and signals", tools["activate_campaign"].description)
+        self.assertIn("three steps", tools["create_campaign"].description)
+        self.assertIn("all three steps, targeting, offering and signals", tools["activate_campaign"].description)
+        self.assertTrue(tools["check_campaign_item"].annotations.readOnlyHint)
+        self.assertTrue(tools["suggest_campaign_signals"].annotations.readOnlyHint)
+        self.assertEqual(set(tools["check_campaign_item"].inputSchema["required"]), {"field", "text"})
+        self.assertEqual(tools["suggest_campaign_signals"].inputSchema.get("required", []), [])
         self.assertNotIn("five steps", tools["activate_campaign"].description)
         self.assertTrue(tools["get_prospect_intelligence"].annotations.readOnlyHint)
         self.assertFalse(tools["signal_search"].annotations.readOnlyHint)
         self.assertEqual(tools["signal_search"].inputSchema["required"], ["request"])
         self.assertEqual(tools["get_prospect_intelligence"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["create_campaign"].inputSchema["properties"]),
-                         {"idempotency_key", "objective", "targeting", "signals", "offering", "messaging", "name"})
+                         {"idempotency_key", "objective", "targeting", "signals", "signal_items", "offering", "messaging", "name"})
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
-                         {"campaign_id", "name", "objective", "targeting", "signals", "offering", "messaging"})
+                         {"campaign_id", "name", "objective", "targeting", "signals", "signal_items", "offering", "messaging"})
         self.assertEqual(tools["activate_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["activate_campaign"].inputSchema["properties"]), {"campaign_id", "confirmation"})
 
@@ -200,6 +204,30 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
                              {"detail": "Add your target signals before activating."}, status=400)
         self.assertIn("Add your target signals before activating.", str(raised.exception))
 
+    async def test_check_campaign_item_posts_the_box_and_its_context(self):
+        reading = {"field": "targeting", "reading": "You are looking for CEOs in Chicago.", "issues": ["technomlog is misspelled"],
+                   "questions": [], "suggested_text": "CEOs of technology companies in Chicago", "confident": False}
+        calls, result = await self._call("check_campaign_item", {"field": "targeting", "text": "CEOs of technomlog in Chicago", "offering": "Content"}, reading)
+        self.assertEqual(calls[0].method, "POST")
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/assist/check")
+        self.assertEqual(json.loads(calls[0].content), {"field": "targeting", "text": "CEOs of technomlog in Chicago", "offering": "Content"})
+        self.assertEqual(self._payload(result), reading)
+
+    async def test_suggest_campaign_signals_researches_or_reads_text(self):
+        signals = {"signals": [{"key": "no_blog_year", "name": "No blog post in a year", "question": "No post in 12 months?", "why": "Stale."}]}
+        calls, result = await self._call("suggest_campaign_signals", {"targeting": "CEOs in Chicago", "offering": "Content", "exclude": ["hiring"]}, signals)
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/assist/signals")
+        self.assertEqual(json.loads(calls[0].content), {"targeting": "CEOs in Chicago", "offering": "Content", "exclude": ["hiring"]})
+        self.assertEqual(self._payload(result), signals)
+        calls, _ = await self._call("suggest_campaign_signals", {"text": "they have no blog"}, signals)
+        self.assertEqual(json.loads(calls[0].content), {"text": "they have no blog"})
+
+    async def test_update_campaign_saves_the_approved_signals(self):
+        items = [{"key": "no_blog_year", "name": "No blog post in a year", "question": "No post in 12 months?", "why": "Stale."}]
+        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "signal_items": items}, {"success": True, "data": {**CAMPAIGN, "signal_items": items}})
+        self.assertEqual(calls[0].method, "PATCH")
+        self.assertEqual(json.loads(calls[0].content), {"signal_items": items})
+
     async def test_get_started_passes_campaigns_through(self):
         data = {"plan": "free_trial", "can_search_people": True, "has_campaign": True, "campaigns": [CAMPAIGN],
                 "next_step": "Greet them."}
@@ -222,7 +250,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
     def test_instructions_walk_through_create_fill_activate(self):
         instructions = create_server(TaskApiClient(TaskApiConfig("https://example.com", "k"))).instructions
         for text in ("has_campaign false", "create_campaign", "update_campaign", "activate_campaign",
-                     "signals, offering and messaging", "will_happen"):
+                     "check_campaign_item", "suggest_campaign_signals", "signal_items", "will_happen"):
             self.assertIn(text, instructions)
         self.assertNotIn("Instagram carousels", instructions)
 

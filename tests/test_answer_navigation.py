@@ -323,11 +323,11 @@ class NavigationToolTests(unittest.IsolatedAsyncioTestCase):
 
         tools = await task_schemas()
         self.assertEqual({tool.name for tool in tools}, TASK_TOOL_NAMES)
-        self.assertEqual(len(tools), 66)
+        self.assertEqual(len(tools), 68)
         with patch.object(
             hosted, "_request_identity", return_value={"research_only": False}
         ):
-            self.assertEqual(len(await hosted.list_tools()), 66)
+            self.assertEqual(len(await hosted.list_tools()), 68)
         self.assertIn("current_answer_goal_id", hosted.server.instructions)
         self.assertIn(
             "missing_email_enrichment_status_counts_by_person",
