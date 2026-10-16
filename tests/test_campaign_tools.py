@@ -9,7 +9,7 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "activate_campaign")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "activate_campaign", "signal_search", "get_prospect_intelligence")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
@@ -58,7 +58,14 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(tools["update_campaign"].annotations.idempotentHint)
         self.assertFalse(tools["activate_campaign"].annotations.readOnlyHint)
         self.assertFalse(tools["activate_campaign"].annotations.destructiveHint)
-        self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "objective", "targeting"})
+        self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "targeting"})
+        self.assertIn("two steps", tools["create_campaign"].description)
+        self.assertIn("both steps, targeting and signals", tools["activate_campaign"].description)
+        self.assertNotIn("five steps", tools["activate_campaign"].description)
+        self.assertTrue(tools["get_prospect_intelligence"].annotations.readOnlyHint)
+        self.assertFalse(tools["signal_search"].annotations.readOnlyHint)
+        self.assertEqual(tools["signal_search"].inputSchema["required"], ["request"])
+        self.assertEqual(tools["get_prospect_intelligence"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["create_campaign"].inputSchema["properties"]),
                          {"idempotency_key", "objective", "targeting", "signals", "offering", "messaging", "name"})
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
@@ -89,12 +96,11 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(self._payload(result)["view_in_producerspark"], "https://producerspark.com/agent/12")
 
-    async def test_create_campaign_needs_only_objective_and_targeting(self):
+    async def test_create_campaign_needs_only_the_targeting(self):
         calls, _ = await self._call("create_campaign", {
-            "idempotency_key": KEY, "objective": "Get leads", "targeting": "Texas agencies",
+            "idempotency_key": KEY, "targeting": "Texas agencies",
         }, {"data": CAMPAIGN}, status=201)
-        self.assertEqual(json.loads(calls[0].content),
-                         {"objective": "Get leads", "targeting": "Texas agencies", "creation_key": KEY})
+        self.assertEqual(json.loads(calls[0].content), {"targeting": "Texas agencies", "creation_key": KEY})
 
     async def test_create_campaign_refuses_missing_targeting_before_calling(self):
         calls = []
@@ -223,3 +229,76 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ROW = {
+    "candidate_id": "task-1-abc", "name": "Connie Hills", "title": "Sr VP Sales", "company": "Swift Transportation",
+    "email": "connie@example.com", "email_status": "verified", "linkedin": "", "location": "Seattle", "fit": None,
+    "status": "ready", "summary": "Sales or ownership change: a new EVP of Sales.", "strongest_signal": "sales_or_ownership_change",
+    "signals": [{"key": "sales_or_ownership_change", "fired": True, "evidence": "A new EVP of Sales.", "sources": ["https://swift.example/about"]}],
+    "facts": ["Swift appointed an EVP of Sales (https://swift.example/about)"], "industry": "trucking",
+    "email": {"subject": "swift direct shipper contracts", "body": "Connie,\n\n..."}, "researched_at": "2026-10-16T21:00:00Z", "error": None,
+}
+
+
+class SignalSearchToolTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _payload(result):
+        content = result[0] if isinstance(result, tuple) else result
+        return json.loads(content[0].text)
+
+    async def test_signal_search_starts_polls_and_returns_the_rows(self):
+        from unittest.mock import AsyncMock, patch
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, request.url.path, request.content))
+            if request.method == "POST":
+                return httpx.Response(200, json={"data": {"id": 31, "state": "queued", "prospect_intelligence": {
+                    "rows": [{**ROW, "status": "queued", "email": None}], "coverage": {"requested": 1, "queued": 1}}}})
+            return httpx.Response(200, json={"data": {"id": 31, "state": "completed", "prospect_intelligence": {
+                "rows": [ROW], "coverage": {"requested": 1, "ready": 1}}}})
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = self._payload(await invoke_task(
+                "signal_search", {"request": "Run the signals on Connie Hills", "campaign_id": 12, "idempotency_key": KEY},
+                api_url="https://example.com", api_key="owner", transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls[0][:2], ("POST", "/api/v1/agent-tasks/signal-search"))
+        self.assertEqual(json.loads(calls[0][2]), {"request": "Run the signals on Connie Hills", "idempotency_key": KEY, "campaign_id": 12})
+        self.assertEqual(calls[1][:2], ("GET", "/api/v1/agent-tasks/31"))
+        self.assertEqual((result["goal_id"], result["status"], result["notice"]), (31, "completed", ""))
+        self.assertEqual(result["rows"][0]["email"]["subject"], "swift direct shipper contracts")
+        self.assertEqual(result["coverage"], {"requested": 1, "ready": 1})
+        self.assertIn("view_in_producerspark", result)
+        self.assertIn("reply_must_end_with", result)
+
+    async def test_signal_search_reports_still_running_with_a_notice(self):
+        from unittest.mock import AsyncMock, patch
+
+        def handler(request):
+            return httpx.Response(200, json={"data": {"id": 32, "state": "running", "prospect_intelligence": {
+                "rows": [{**ROW, "status": "running", "email": None}], "coverage": {"requested": 1, "running": 1}}}})
+
+        with patch("asyncio.sleep", new=AsyncMock()), patch("time.monotonic", side_effect=[0, 0, 1000, 1000, 1000]):
+            result = self._payload(await invoke_task(
+                "signal_search", {"request": "signal search my list"},
+                api_url="https://example.com", api_key="owner", transport=httpx.MockTransport(handler)))
+        self.assertEqual(result["status"], "still_running")
+        self.assertIn("same idempotency_key", result["notice"])
+        self.assertEqual(result["rows"][0]["status"], "running")
+
+    async def test_get_prospect_intelligence_reads_a_campaign(self):
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json={"data": {"campaign_id": 12, "counts": {"ready": 1, "pending": 99}, "rows": [ROW]}})
+
+        result = self._payload(await invoke_task(
+            "get_prospect_intelligence", {"campaign_id": 12, "status": "ready", "limit": 20},
+            api_url="https://example.com", api_key="owner", transport=httpx.MockTransport(handler)))
+        self.assertEqual(calls[0].url.path, "/api/v1/agent-tasks/campaigns/12/intelligence")
+        self.assertEqual(dict(calls[0].url.params), {"status": "ready", "limit": "20"})
+        self.assertEqual(result["counts"], {"ready": 1, "pending": 99})
+        self.assertEqual(result["rows"][0]["name"], "Connie Hills")
+        self.assertEqual(result["view_in_producerspark"], "https://producerspark.com/agent/12")
