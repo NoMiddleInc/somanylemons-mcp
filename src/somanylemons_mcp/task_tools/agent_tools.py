@@ -15,10 +15,10 @@ PostId = Annotated[int, Field(gt=0, description="The post's id, from list_posts 
 ClipId = Annotated[int, Field(gt=0, description="The clip's id, from list_recordings or get_recording.")]
 DesignId = Annotated[int, Field(gt=0, description="A design id from list_recording_designs.")]
 RecordingId = Annotated[str, Field(min_length=1, max_length=64, description="The recording's id, from list_recordings.")]
-Network = Literal["linkedin", "twitter"]
+Network = Literal["linkedin", "twitter", "instagram"]
 Caption = Annotated[str, Field(max_length=3000)]
-Account = Annotated[str, Field(max_length=200, description="Only for X when more than one X account is connected: the handle to post from.")]
-MediaUrls = Annotated[list[Annotated[str, Field(max_length=2000)]], Field(max_length=9, description="Public https links that point directly at image or video files (not web pages). One video, or up to nine images.")]
+Account = Annotated[str, Field(max_length=200, description="Only for X or Instagram when more than one account of that network is connected: the handle to post from.")]
+MediaUrls = Annotated[list[Annotated[str, Field(max_length=2000)]], Field(max_length=9, description="Public https links that point directly at image or video files (not web pages). One video, or up to nine images (Instagram takes one to ten images, no video yet).")]
 When = Annotated[str, Field(description="Date and time, for example 2026-10-14T09:00. Without an offset it is read in the account's own timezone.")]
 Zone = Annotated[str, Field(description="IANA timezone name such as America/Chicago. Leave out to use the account's timezone.")]
 AccountId = Annotated[int, Field(gt=0, description="Only for a teammate who was added to more than one account: the id of the account to work in. Leave out otherwise.")]
@@ -110,7 +110,7 @@ def register(server, api) -> None:
 
     @server.tool(annotations=WRITE)
     async def copy_post_to_network(post_id: PostId, network: Network, idempotency_key: UUID, account: Account | None = None, account_id: AccountId | None = None) -> dict:
-        """Make a copy of an unscheduled draft for another network (LinkedIn or X) as its own draft, sharing the same media. Schedule the copy separately."""
+        """Make a copy of an unscheduled draft for another network (LinkedIn, X or Instagram) as its own draft, sharing the same media. Schedule the copy separately."""
         return await act("copy_post_to_network", post_id=post_id, network=network, account=account, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(annotations=READ)
