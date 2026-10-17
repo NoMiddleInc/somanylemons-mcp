@@ -93,7 +93,7 @@ For every new business research request, call create_business_research_request w
 
 ## Posts and recordings
 
-The same connection runs the account's Scheduling Agent (social posts on LinkedIn and X) and Recording Agent (a recording is edited into short clips, and each finished clip becomes a draft post).
+The same connection runs the account's Scheduling Agent (social posts on LinkedIn, X and Instagram) and Recording Agent (a recording is edited into short clips, and each finished clip becomes a draft post).
 
 - Look first: list_posts, get_post, get_posting_overview, list_recordings, get_recording, list_recording_designs. Use only ids these return.
 - Posts: create_post, update_post (a scheduled post keeps its time), schedule_post (also moves a scheduled post; next_open_slot takes the next free slot), unschedule_post, copy_post_to_network, publish_post_now, delete_post.
