@@ -11,7 +11,7 @@ curl -sL https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/ins
 Or add the hosted server yourself:
 
 ```bash
-claude mcp add --scope user --transport http somanylemons https://producerspark.com/mcp --header "X-API-Key: sml_your_key_here"
+claude mcp add --scope user --transport http producerspark https://producerspark.com/mcp --header "X-API-Key: sml_your_key_here"
 ```
 
 ## License

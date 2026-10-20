@@ -282,7 +282,6 @@ def _create_app() -> ASGIApp:
             "https://www.claude.ai",
             "https://chatgpt.com",
             "https://producerspark.com",
-            "https://somanylemons.com",
             "https://cursor.sh",
             "https://www.cursor.sh",
             "http://localhost:3000",

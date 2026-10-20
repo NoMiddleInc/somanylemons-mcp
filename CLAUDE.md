@@ -1,4 +1,4 @@
-# SoManyLemons MCP
+# ProducerSpark MCP
 
 ## Key Rules
 

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "somanylemons": {
+    "producerspark": {
       "type": "http",
       "url": "https://producerspark.com/mcp",
       "headers": {

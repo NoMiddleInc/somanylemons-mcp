@@ -1,9 +1,9 @@
 {
   "name": "somanylemons-mcp",
-  "description": "SoManyLemons marketplace — AI-powered video reels, LinkedIn posts, and image quotes",
+  "description": "ProducerSpark marketplace: AI-powered video reels, LinkedIn posts, and image quotes",
   "owner": {
     "name": "NoMiddleInc",
-    "email": "support@somanylemons.com"
+    "email": "robbie@nomiddle.com"
   },
   "plugins": [
     {
@@ -14,7 +14,7 @@
         "url": "https://github.com/NoMiddleInc/somanylemons-mcp.git"
       },
       "category": "productivity",
-      "homepage": "https://somanylemons.com"
+      "homepage": "https://producerspark.com"
     }
   ]
 }

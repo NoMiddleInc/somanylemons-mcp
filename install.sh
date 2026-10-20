@@ -1,5 +1,5 @@
 #!/bin/bash
-# SoManyLemons MCP — One-line installer
+# ProducerSpark MCP: one-line installer
 #
 # Usage:
 #   curl -sL https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main/install.sh | bash
@@ -13,7 +13,7 @@ REPO="https://raw.githubusercontent.com/NoMiddleInc/somanylemons-mcp/main"
 API_KEY="${1:-}"
 
 echo ""
-echo "  🍋 SoManyLemons MCP Installer"
+echo "  ProducerSpark MCP Installer"
 echo "  ─────────────────────────────"
 echo ""
 
@@ -23,13 +23,13 @@ curl -fsSL "$REPO/skills/producerspark/SKILL.md" -o ~/.claude/skills/producerspa
 echo "  ✓ Installed /producerspark live prospect workflow"
 
 # ── Step 2: Configure MCP server ─────────────────────────────────────────────
-if command -v claude &>/dev/null && claude mcp list 2>/dev/null | grep -q "somanylemons"; then
+if command -v claude &>/dev/null && claude mcp list 2>/dev/null | grep -qE "producerspark|somanylemons"; then
     echo "  ✓ MCP server already configured"
 else
     # Get API key if not provided as argument
     if [[ -z "$API_KEY" ]]; then
         echo ""
-        echo "  🔑 Enter your SoManyLemons API key (starts with sml_)."
+        echo "  🔑 Enter your ProducerSpark API key (starts with sml_)."
         echo ""
         echo "  Don't have one? Get it at:"
         echo "  → https://producerspark.com/developers/portal"
@@ -45,7 +45,7 @@ else
     fi
 
     if command -v claude &>/dev/null; then
-        claude mcp add --scope user --transport http somanylemons \
+        claude mcp add --scope user --transport http producerspark \
             "https://producerspark.com/mcp" \
             --header "X-API-Key: $API_KEY" 2>/dev/null
         echo "  ✓ MCP server configured"
@@ -55,7 +55,7 @@ else
         echo ""
         echo '  {
     "mcpServers": {
-      "somanylemons": {
+      "producerspark": {
         "type": "url",
         "url": "https://producerspark.com/mcp",
         "headers": {
@@ -69,5 +69,5 @@ else
 fi
 
 echo ""
-echo "  🍋 Done! Restart Claude Code and type /producerspark"
+echo "  Done! Restart Claude Code and type /producerspark"
 echo ""
