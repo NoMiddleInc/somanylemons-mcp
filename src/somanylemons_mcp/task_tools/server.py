@@ -64,10 +64,12 @@ ACTIVATE = ToolAnnotations(
 CampaignName = Annotated[str, Field(min_length=1, max_length=120, description="Short campaign name. Leave out to start it from the first line of the targeting.")]
 CampaignObjective = Annotated[str, Field(min_length=1, max_length=200, description="Optional: what the campaign should get done, such as Get leads or Book intro meetings.")]
 CampaignTargeting = Annotated[str, Field(min_length=1, max_length=10000, description="Step 1, the prospects' industry and titles: target industry, company size, titles and places, in the customer's words.")]
-CampaignSignals = Annotated[str, Field(max_length=10000, description="Step 2, target signals in the customer's words: what tells them a company is worth reaching now. Saved as written and split into separate signals, one per thing they described.")]
+CampaignSignals = Annotated[str, Field(max_length=10000, description="Step 2, target signals in the customer's words: what tells them a company is worth reaching now. Saved as written and turned into searches, at most one per source they can be checked from.")]
 CampaignOffering = Annotated[str, Field(max_length=10000, description="Step 3, what they offer: the service the customer sells or provides to these people, in their words.")]
 CampaignField = Annotated[str, Field(pattern="^(targeting|offering|signals)$", description="Which box to read back: targeting, offering or signals.")]
 CampaignMessaging = Annotated[str, Field(max_length=10000, description="Optional: how each message should be tailored to the person: tone, what to mention, what to avoid.")]
+SignalKey = Annotated[str, Field(min_length=1, max_length=120, description="The key of one signal, from signal_items on list_campaigns or get_started.")]
+SignalText = Annotated[str, Field(min_length=1, max_length=5000, description="One signal in the customer's words, verbatim; it becomes one search per source it can be checked from.")]
 
 
 def campaign_page(campaign_id) -> str:
@@ -483,7 +485,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link and the reply_must_end_with line. "
             "For new background research submit the original request verbatim through create_business_research_request without spec or host-selected companies. The backend owns interpretation and background execution for all channels. Preserve its acknowledgment faithfully. "
             "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
-            "Campaigns organize the account: each starts from three steps in the customer's own words, in this order: targeting (industry and titles), signals (what makes a company worth reaching now) and offering (what they offer), plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving any of the three, call check_campaign_item, say back its reading and questions with their options, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the signals and the offering. The signals are saved as written and come back split one per entry in signal_items; never invent signals for the customer. Then offer to activate it. "
+            "Campaigns organize the account: each starts from three steps in the customer's own words, in this order: targeting (industry and titles), signals (what makes a company worth reaching now) and offering (what they offer), plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving any of the three, call check_campaign_item, say back its reading and questions with their options, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the signals and the offering. The signals are saved as written and come back in signal_items as the searches they become, at most one per source (website, news, event, job postings), each with a summary line; say the summaries back, never invent signals for the customer, and never suggest more when their words already make a complete search. To change one signal later, use update_campaign_signal with its key; to drop one, delete_campaign_signal; to add one, add_campaign_signal; update_campaign with signals replaces the whole set. Then offer to activate it. "
             "When a user states a new goal or changes who to reach, save it with create_campaign, or with update_campaign on a campaign from list_campaigns. activate_campaign starts finding prospects and signals and prepares messaging for review; it never sends. Its first call returns needs_confirmation and will_happen: show will_happen word for word, wait for a clear yes, then call again with confirmation. "
             "Present the returned message faithfully, preserving its meaning, paragraph breaks and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Use the backend acknowledgment and concise progress wording. Use Markdown tables for contact results. Contact results use Name | Company | Title | Email | LinkedIn, one person per row. Preserve recorded uncertainty in Email status or Source columns when needed. Use Pending for unfinished or blocked lookup; Not found only after completed enrichment without a result. Progress, blockers, questions and next actions use Task | Status | Next step. Downloads use File | Status with clickable links. Honor an explicit request for another format. Omit internal steps and repeated caveats. "
@@ -1091,13 +1093,36 @@ def create_server(api: TaskApiClient) -> FastMCP:
         offering: CampaignOffering | None = None,
         messaging: CampaignMessaging | None = None,
     ) -> dict:
-        """Change a campaign's name, its three steps (targeting, signals, offering) or its optional objective and messaging. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; anything left out stays as it is. Read a changed step back with check_campaign_item and get a clear yes first. Saved signals come back split one per entry in signal_items. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged."""
+        """Change a campaign's name, its three steps (targeting, signals, offering) or its optional objective and messaging. Use a campaign_id from list_campaigns or get_started. Send only what the user changed; anything left out stays as it is. Read a changed step back with check_campaign_item and get a clear yes first. Sending signals replaces the whole set; saved signals come back in signal_items as the searches they become, one per source, each with a summary line. To change, add or remove one signal, use update_campaign_signal, add_campaign_signal or delete_campaign_signal instead. A 400 error carries a plain reason and a 404 means the campaign is unknown or archived: tell the user and do not guess another id. Show view_in_producerspark as a clickable link. Saves only; nothing is searched, sent or charged."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "targeting": targeting,
             "signals": signals, "offering": offering, "messaging": messaging,
         }.items() if value is not None}
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
+        )
+
+    @server.tool(annotations=SAVE)
+    async def add_campaign_signal(campaign_id: PositiveId, text: SignalText) -> dict:
+        """Add one target signal to a campaign in the customer's words, verbatim. The backend turns it into one search per source it can be checked from (website, news, event, job postings) and keeps the campaign's other signals as they are; a line nothing can check comes back declined with the reason. Read it back with check_campaign_item (field signals) and get a clear yes first. Returns the campaign with signal_items, each with its summary (what will be searched, in one line), check_from and checkable; show the summary of what was added. On an active campaign, a changed set of signals makes every prospect due for research again (three are tried first); nobody is charged twice for a person. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
+        return with_campaign_link(
+            await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals", body={"text": text})
+        )
+
+    @server.tool(annotations=SAVE)
+    async def update_campaign_signal(campaign_id: PositiveId, signal_key: SignalKey, text: SignalText) -> dict:
+        """Replace one target signal with new wording from the customer, verbatim; the campaign's other signals stay as they are. Use the signal's key from signal_items on list_campaigns. The backend turns the new text into the search it becomes and returns the campaign with signal_items; show the changed signal's summary. Read the new wording back with check_campaign_item (field signals) and get a clear yes first. On an active campaign, a changed signal makes every prospect due for research again (three are tried first); nobody is charged twice for a person. A 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
+        return with_campaign_link(
+            await api.request(
+                "PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}", body={"text": text}
+            )
+        )
+
+    @server.tool(annotations=CANCEL)
+    async def delete_campaign_signal(campaign_id: PositiveId, signal_key: SignalKey) -> dict:
+        """Remove one target signal from a campaign, and its Golden List filter, after the customer clearly asked for that signal to go. Use the key from signal_items on list_campaigns and say which signal (its summary) will be removed before calling. Research already done for it stays on the prospects. Returns the campaign with the remaining signal_items. A 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
+        return with_campaign_link(
+            await api.request("DELETE", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}")
         )
 
     @server.tool(annotations=READ)

@@ -9,7 +9,7 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
@@ -76,6 +76,12 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
                          {"campaign_id", "name", "objective", "targeting", "signals", "offering", "messaging"})
+        self.assertEqual(tools["add_campaign_signal"].inputSchema["required"], ["campaign_id", "text"])
+        self.assertEqual(tools["update_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key", "text"])
+        self.assertEqual(tools["delete_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key"])
+        self.assertTrue(tools["delete_campaign_signal"].annotations.destructiveHint)
+        self.assertFalse(tools["add_campaign_signal"].annotations.destructiveHint)
+        self.assertFalse(tools["update_campaign_signal"].annotations.readOnlyHint)
         self.assertEqual(tools["activate_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["activate_campaign"].inputSchema["properties"]), {"campaign_id", "confirmation"})
 
@@ -170,8 +176,46 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("HTTP 400", text)
         self.assertIn("Archived campaigns cannot be changed.", text)
 
+    async def test_signal_tools_mirror_the_per_signal_routes(self):
+        skill = {"key": "website_industries", "name": "Serves construction", "check_from": "website",
+                 "summary": "Website check: serves construction. Read from their services pages.",
+                 "text": "They serve construction", "checkable": True}
+        calls, result = await self._call("add_campaign_signal", {
+            "campaign_id": 12, "text": "They serve construction",
+        }, {"data": {**CAMPAIGN, "signal_items": [skill]}})
+        self.assertEqual((calls[0].method, calls[0].url.path), ("POST", "/api/v1/agent-tasks/campaigns/12/signals"))
+        self.assertEqual(json.loads(calls[0].content), {"text": "They serve construction"})
+        payload = self._payload(result)
+        self.assertEqual(payload["signal_items"][0]["summary"], skill["summary"])
+        self.assertEqual(payload["view_in_producerspark"], "https://producerspark.com/agent/12")
+
+        calls, _ = await self._call("update_campaign_signal", {
+            "campaign_id": 12, "signal_key": "website_industries", "text": "They serve construction or hospitality",
+        }, {"data": {**CAMPAIGN, "signal_items": [skill]}})
+        self.assertEqual((calls[0].method, calls[0].url.path),
+                         ("PATCH", "/api/v1/agent-tasks/campaigns/12/signals/website_industries"))
+        self.assertEqual(json.loads(calls[0].content), {"text": "They serve construction or hospitality"})
+
+        calls, result = await self._call("delete_campaign_signal", {
+            "campaign_id": 12, "signal_key": "website_industries",
+        }, {"data": CAMPAIGN})
+        self.assertEqual((calls[0].method, calls[0].url.path),
+                         ("DELETE", "/api/v1/agent-tasks/campaigns/12/signals/website_industries"))
+        self.assertEqual(calls[0].content, b"")
+        self.assertEqual(self._payload(result)["signal_items"], [])
+
+    async def test_signal_tools_refuse_empty_text_before_calling(self):
+        for name, arguments in (("add_campaign_signal", {"campaign_id": 12, "text": ""}),
+                                ("update_campaign_signal", {"campaign_id": 12, "signal_key": "k", "text": ""}),
+                                ("delete_campaign_signal", {"campaign_id": 12, "signal_key": ""})):
+            with self.assertRaises(Exception):
+                await self._call(name, arguments, {"data": CAMPAIGN})
+
     async def test_unknown_campaign_is_a_404(self):
         for name, arguments in (("update_campaign", {"campaign_id": 99, "name": "New"}),
+                                ("add_campaign_signal", {"campaign_id": 99, "text": "Hiring"}),
+                                ("update_campaign_signal", {"campaign_id": 99, "signal_key": "k", "text": "Hiring"}),
+                                ("delete_campaign_signal", {"campaign_id": 99, "signal_key": "k"}),
                                 ("activate_campaign", {"campaign_id": 99})):
             with self.assertRaises(Exception) as raised:
                 await self._call(name, arguments, {"detail": "Not found."}, status=404)
@@ -244,7 +288,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
     def test_instructions_walk_through_create_fill_activate(self):
         instructions = create_server(TaskApiClient(TaskApiConfig("https://example.com", "k"))).instructions
         for text in ("has_campaign false", "create_campaign", "update_campaign", "activate_campaign",
-                     "check_campaign_item", "split one per entry", "will_happen"):
+                     "check_campaign_item", "update_campaign_signal", "delete_campaign_signal", "add_campaign_signal", "will_happen"):
             self.assertIn(text, instructions)
         self.assertNotIn("Instagram carousels", instructions)
 
