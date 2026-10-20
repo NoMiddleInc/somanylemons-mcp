@@ -9,7 +9,7 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "set_signal_emails", "clear_signal_emails", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
@@ -203,6 +203,23 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
                          ("DELETE", "/api/v1/agent-tasks/campaigns/12/signals/website_industries"))
         self.assertEqual(calls[0].content, b"")
         self.assertEqual(self._payload(result)["signal_items"], [])
+
+    async def test_signal_emails_are_set_and_cleared_by_key(self):
+        emails = [{"subject": "new producers", "body": "{{first_name}},\n\n{{signal_line}}\n\nWe run IT."}]
+        calls, result = await self._call("set_signal_emails", {
+            "campaign_id": 12, "signal_key": "hiring", "emails": emails,
+        }, {"data": {**CAMPAIGN, "signal_emails": {"hiring": emails}}})
+        self.assertEqual((calls[0].method, calls[0].url.path),
+                         ("PUT", "/api/v1/agent-tasks/campaigns/12/signals/hiring/emails"))
+        self.assertEqual(json.loads(calls[0].content), {"emails": emails})
+        self.assertEqual(self._payload(result)["signal_emails"], {"hiring": emails})
+        calls, _ = await self._call("clear_signal_emails", {"campaign_id": 12, "signal_key": "hiring"}, {"data": CAMPAIGN})
+        self.assertEqual((calls[0].method, calls[0].url.path),
+                         ("DELETE", "/api/v1/agent-tasks/campaigns/12/signals/hiring/emails"))
+        for bad in ([], [{"subject": "s", "body": ""}], emails * 4):
+            with self.assertRaises(Exception):
+                await self._call("set_signal_emails", {"campaign_id": 12, "signal_key": "hiring", "emails": bad},
+                                 {"data": CAMPAIGN})
 
     async def test_signal_tools_refuse_empty_text_before_calling(self):
         for name, arguments in (("add_campaign_signal", {"campaign_id": 12, "text": ""}),

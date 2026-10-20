@@ -72,6 +72,16 @@ SignalKey = Annotated[str, Field(min_length=1, max_length=120, description="The 
 SignalText = Annotated[str, Field(min_length=1, max_length=5000, description="One signal in the customer's words, verbatim; it becomes one search per source it can be checked from.")]
 
 
+class SignalEmail(BaseModel):
+    """One email of a signal's own sequence."""
+
+    subject: str = Field(default="", max_length=120, description="The subject line.")
+    body: str = Field(min_length=1, max_length=2000, description="The email in the customer's words. {{first_name}} greets the person and {{signal_line}} becomes one sentence about what was found at their company.")
+
+
+SignalEmails = Annotated[list[SignalEmail], Field(min_length=1, max_length=3, description="One to three emails, sent on days 1, 4 and 8.")]
+
+
 def campaign_page(campaign_id) -> str:
     return f"{SITE_URL}/agent/{campaign_id}"
 
@@ -485,7 +495,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "Keep user-facing replies about 80% shorter: normally at most 75 words, plus one download link and the reply_must_end_with line. "
             "For new background research submit the original request verbatim through create_business_research_request without spec or host-selected companies. The backend owns interpretation and background execution for all channels. Preserve its acknowledgment faithfully. "
             "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
-            "Campaigns organize the account: each starts from three steps in the customer's own words, in this order: targeting (industry and titles), signals (what makes a company worth reaching now) and offering (what they offer), plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving any of the three, call check_campaign_item, say back its reading and questions with their options, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the signals and the offering. The signals are saved as written and come back in signal_items as the searches they become, at most one per source (website, news, event, job postings), each with a summary line; say the summaries back, never invent signals for the customer, and never suggest more when their words already make a complete search. To change one signal later, use update_campaign_signal with its key; to drop one, delete_campaign_signal; to add one, add_campaign_signal; update_campaign with signals replaces the whole set. Then offer to activate it. "
+            "Campaigns organize the account: each starts from three steps in the customer's own words, in this order: targeting (industry and titles), signals (what makes a company worth reaching now) and offering (what they offer), plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving any of the three, call check_campaign_item, say back its reading and questions with their options, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the signals and the offering. The signals are saved as written and come back in signal_items as the searches they become, at most one per source (website, news, event, job postings), each with a summary line; say the summaries back, never invent signals for the customer, and never suggest more when their words already make a complete search. To change one signal later, use update_campaign_signal with its key; to drop one, delete_campaign_signal; to add one, add_campaign_signal; update_campaign with signals replaces the whole set. A signal can carry its own one to three emails (set_signal_emails, removed with clear_signal_emails) that its people get instead of the main sequence; {{signal_line}} in them becomes one sentence about what was found at each company. Then offer to activate it. "
             "When a user states a new goal or changes who to reach, save it with create_campaign, or with update_campaign on a campaign from list_campaigns. activate_campaign starts finding prospects and signals and prepares messaging for review; it never sends. Its first call returns needs_confirmation and will_happen: show will_happen word for word, wait for a clear yes, then call again with confirmation. "
             "Present the returned message faithfully, preserving its meaning, paragraph breaks and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Use the backend acknowledgment and concise progress wording. Use Markdown tables for contact results. Contact results use Name | Company | Title | Email | LinkedIn, one person per row. Preserve recorded uncertainty in Email status or Source columns when needed. Use Pending for unfinished or blocked lookup; Not found only after completed enrichment without a result. Progress, blockers, questions and next actions use Task | Status | Next step. Downloads use File | Status with clickable links. Honor an explicit request for another format. Omit internal steps and repeated caveats. "
@@ -1123,6 +1133,24 @@ def create_server(api: TaskApiClient) -> FastMCP:
         """Remove one target signal from a campaign, and its Golden List filter, after the customer clearly asked for that signal to go. Use the key from signal_items on list_campaigns and say which signal (its summary) will be removed before calling. Research already done for it stays on the prospects. Returns the campaign with the remaining signal_items. A 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
             await api.request("DELETE", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}")
+        )
+
+    @server.tool(annotations=SAVE)
+    async def set_signal_emails(campaign_id: PositiveId, signal_key: SignalKey, emails: SignalEmails) -> dict:
+        """Give one target signal its own short email sequence: the people that signal was found at get these emails instead of the campaign's main sequence (someone found under two signals gets the first signal's). Use the key from signal_items on list_campaigns. Write the emails in the customer's words; start the first with {{first_name}} and {{signal_line}}, which becomes one sentence about what was found at that person's company. Show the emails and get a clear yes first. Returns the campaign with signal_emails by key. Saves only; sending stays on the Email Agent's own schedule. A 400 error carries a plain reason; a 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
+        return with_campaign_link(
+            await api.request(
+                "PUT",
+                f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}/emails",
+                body={"emails": [email.model_dump() for email in emails]},
+            )
+        )
+
+    @server.tool(annotations=CANCEL)
+    async def clear_signal_emails(campaign_id: PositiveId, signal_key: SignalKey) -> dict:
+        """Remove one signal's own emails after the customer asked for that; its people go back to the campaign's main sequence. Use the key from signal_items on list_campaigns. Returns the campaign with the remaining signal_emails. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
+        return with_campaign_link(
+            await api.request("DELETE", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}/emails")
         )
 
     @server.tool(annotations=READ)
