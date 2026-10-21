@@ -79,7 +79,7 @@ class SignalEmail(BaseModel):
     body: str = Field(min_length=1, max_length=2000, description="The email in the customer's words. {{first_name}} greets the person and {{signal_line}} becomes one sentence about what was found at their company.")
 
 
-SignalEmails = Annotated[list[SignalEmail], Field(min_length=1, max_length=3, description="One to three emails, sent on days 1, 4 and 8.")]
+SignalEmails = Annotated[list[SignalEmail], Field(min_length=1, max_length=3, description="One to three emails. They take the place of the first emails of the campaign's main sequence, on its days; its later emails still follow. Write no more emails than the main sequence has, since an extra one is never sent.")]
 
 
 def campaign_page(campaign_id) -> str:
