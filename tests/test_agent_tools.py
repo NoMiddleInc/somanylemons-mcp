@@ -157,10 +157,13 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(text, kept)
         self.assertLess(len(server.OVERVIEW), 800)
 
-    async def test_nothing_here_can_start_email_sending(self):
-        tools = {tool.name for tool in await task_schemas()}
+    async def test_only_one_tool_starts_email_sending_and_it_asks_first(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
         self.assertIn("pause_email_agent", tools)
-        self.assertFalse({name for name in tools if "start_email" in name or "enroll" in name})
+        starters = {name for name in tools if "start" in name and ("email" in name or "sending" in name)}
+        self.assertEqual(starters, {"start_campaign_sending"})
+        self.assertIn("confirmation", tools["start_campaign_sending"].inputSchema["properties"])
+        self.assertIn("sends nothing", tools["enroll_campaign_people"].description)
 
 
     async def test_browser_recording_hands_off_the_recorder_link_and_the_time_to_wait_from(self):

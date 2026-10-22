@@ -385,3 +385,97 @@ class SignalSearchToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["counts"], {"ready": 1, "pending": 99})
         self.assertEqual(result["rows"][0]["name"], "Connie Hills")
         self.assertEqual(result["view_in_producerspark"], "https://producerspark.com/agent/12")
+
+
+EMAIL = {"campaign_id": 12, "name": "Texas producers", "golden_list_id": 44,
+         "sequence": {"steps": [], "revision": None, "saved": False, "sending_copy": []},
+         "enrollment": {"enrolled_prospects": 0, "enrollment_statuses": {}, "not_enrolled": 3},
+         "delivery": {}, "replied_prospects": 0, "start": None, "sending": False,
+         "checks": [{"name": "people", "ok": False, "detail": "Enroll people from the Golden List."}],
+         "ready_to_send": False}
+EMAIL_TOOLS = ("get_campaign_email", "save_campaign_sequence", "enroll_campaign_people", "start_campaign_sending",
+               "pause_campaign_sending", "get_campaign_results", "get_email_sending_settings",
+               "update_email_sending_settings")
+
+
+class CampaignEmailToolTests(CampaignToolTests):
+    async def test_email_tools_are_offered_with_honest_annotations(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
+        for name in EMAIL_TOOLS:
+            self.assertIn(name, TASK_TOOL_NAMES)
+            self.assertNotIn("apollo", tools[name].description.lower())
+            self.assertNotIn("—", tools[name].description)
+        for name in ("get_campaign_email", "get_campaign_results", "get_email_sending_settings"):
+            self.assertTrue(tools[name].annotations.readOnlyHint, name)
+        self.assertFalse(tools["start_campaign_sending"].annotations.readOnlyHint)
+        self.assertEqual(set(tools["start_campaign_sending"].inputSchema["properties"]), {"campaign_id", "confirmation"})
+        self.assertEqual(set(tools["save_campaign_sequence"].inputSchema["required"]), {"campaign_id", "steps"})
+        self.assertIn("emails real prospects", tools["start_campaign_sending"].description)
+
+    async def test_get_campaign_email_reads_the_email_step_with_a_link(self):
+        calls, result = await self._call("get_campaign_email", {"campaign_id": 12}, {"data": EMAIL})
+        self.assertEqual((calls[0].method, calls[0].url.path), ("GET", "/api/v1/agent-tasks/campaigns/12/email"))
+        payload = self._payload(result)
+        self.assertFalse(payload["ready_to_send"])
+        self.assertTrue(payload["view_in_producerspark"].endswith("/agent/12"))
+
+    async def test_save_campaign_sequence_puts_the_steps_and_revision(self):
+        steps = [{"day": 1, "subject": "Hi {{first_name}}", "body": "One idea."},
+                 {"day": 3, "channel": "linkedin_connect", "body": "Glad to connect."}]
+        calls, _ = await self._call("save_campaign_sequence", {"campaign_id": 12, "steps": steps, "revision": "r1"},
+                                    {"data": EMAIL})
+        self.assertEqual((calls[0].method, calls[0].url.path),
+                         ("PUT", "/api/v1/agent-tasks/campaigns/12/email/sequence"))
+        sent = json.loads(calls[0].content)
+        self.assertEqual(sent["revision"], "r1")
+        self.assertEqual([step["channel"] for step in sent["steps"]], ["email", "linkedin_connect"])
+        calls, _ = await self._call("save_campaign_sequence", {"campaign_id": 12, "steps": steps[:1]}, {"data": EMAIL})
+        self.assertNotIn("revision", json.loads(calls[0].content))
+        with self.assertRaises(Exception):
+            await self._call("save_campaign_sequence", {"campaign_id": 12, "steps": []}, {"data": EMAIL})
+
+    async def test_enroll_repeats_batches_until_nobody_is_left(self):
+        batches = iter([
+            {"data": {**EMAIL, "enrolled_count": 100, "skipped": [], "remaining": 20}},
+            {"data": {**EMAIL, "enrolled_count": 19, "skipped": [{"candidate_id": "x", "reason": "No email."}],
+                      "remaining": 0, "ready_to_send": True}},
+        ])
+        calls = []
+
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(200, json=next(batches))
+
+        result = await invoke_task("enroll_campaign_people", {"campaign_id": 12}, api_url="https://example.com",
+                                   api_key="owner", transport=httpx.MockTransport(handler))
+        payload = self._payload(result)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(json.loads(calls[1].content), {"limit": 100})
+        self.assertEqual((payload["enrolled_count"], len(payload["skipped"]), payload["ready_to_send"]), (119, 1, True))
+
+    async def test_enroll_stops_when_a_batch_enrolls_nobody(self):
+        calls, result = await self._call("enroll_campaign_people", {"campaign_id": 12},
+                                         {"data": {**EMAIL, "enrolled_count": 0, "skipped": [], "remaining": 3}})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self._payload(result)["enrolled_count"], 0)
+
+    async def test_start_passes_the_confirmation_through(self):
+        asked = {"needs_confirmation": True, "done": False, "will_happen": "Start sending.", "confirmation": "abc"}
+        calls, result = await self._call("start_campaign_sending", {"campaign_id": 12}, asked)
+        self.assertEqual((calls[0].method, calls[0].url.path), ("POST", "/api/v1/agent-tasks/campaigns/12/email/start"))
+        self.assertEqual(json.loads(calls[0].content), {})
+        self.assertTrue(self._payload(result)["needs_confirmation"])
+        calls, _ = await self._call("start_campaign_sending", {"campaign_id": 12, "confirmation": "abc"},
+                                    {"data": {**EMAIL, "sending": True}})
+        self.assertEqual(json.loads(calls[0].content), {"confirmation": "abc"})
+
+    async def test_pause_results_and_settings_routes(self):
+        for name, arguments, method, path in (
+            ("pause_campaign_sending", {"campaign_id": 12}, "POST", "/api/v1/agent-tasks/campaigns/12/email/pause"),
+            ("get_campaign_results", {"campaign_id": 12}, "GET", "/api/v1/agent-tasks/campaigns/12/results"),
+            ("get_email_sending_settings", {}, "GET", "/api/v1/agent-tasks/email/sending-settings"),
+        ):
+            calls, _ = await self._call(name, arguments, {"data": {}})
+            self.assertEqual((calls[0].method, calls[0].url.path), (method, path), name)
+        calls, _ = await self._call("update_email_sending_settings", {"send_on_weekends": True}, {"data": {}})
+        self.assertEqual((calls[0].method, json.loads(calls[0].content)), ("PATCH", {"send_on_weekends": True}))

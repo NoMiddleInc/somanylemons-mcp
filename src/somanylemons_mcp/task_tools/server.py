@@ -82,6 +82,21 @@ class SignalEmail(BaseModel):
 SignalEmails = Annotated[list[SignalEmail], Field(min_length=1, max_length=3, description="One to three emails. They take the place of the first emails of the campaign's main sequence, on its days; its later emails still follow. Write no more emails than the main sequence has, since an extra one is never sent.")]
 
 
+class SequenceStep(BaseModel):
+    """One step of a campaign's sequence."""
+
+    day: int = Field(ge=1, le=3650, description="The day this step goes out, counted from enrollment; day 1 is the first. Each step must be on a later day than the one before.")
+    channel: Literal["email", "linkedin_connect", "linkedin_message"] = Field(default="email", description="email (the default), linkedin_connect (a connection request with an optional note) or linkedin_message (a LinkedIn message after they accept).")
+    subject: str = Field(default="", max_length=255, description="The email's subject line. Leave empty for LinkedIn steps.")
+    body: str = Field(max_length=10000, description="The step in the customer's words. {{first_name}} and {{company}} are filled in for each person.")
+
+
+SequenceSteps = Annotated[list[SequenceStep], Field(min_length=1, max_length=20, description="The whole sequence in order, with at least one email. It replaces the saved sequence.")]
+
+
+ENROLL_BATCH = 100
+
+
 def campaign_page(campaign_id) -> str:
     return f"{SITE_URL}/agent/{campaign_id}"
 
@@ -497,6 +512,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "For Email Agent status use get_email_agent_status; for list or outreach questions use ask_email_agent. "
             "Campaigns organize the account: each starts from three steps in the customer's own words, in this order: targeting (industry and titles), signals (what makes a company worth reaching now) and offering (what they offer), plus optional objective and messaging, and holds one Golden List of prospects. When get_started shows has_campaign false, ask who to reach. Before saving any of the three, call check_campaign_item, say back its reading and questions with their options, and ask whether that is what they want; save only after a clear yes, with create_campaign for the targeting and update_campaign for the signals and the offering. The signals are saved as written and come back in signal_items as the searches they become, at most one per source (website, news, event, job postings), each with a summary line; say the summaries back, never invent signals for the customer, and never suggest more when their words already make a complete search. To change one signal later, use update_campaign_signal with its key; to drop one, delete_campaign_signal; to add one, add_campaign_signal; update_campaign with signals replaces the whole set. A signal can carry its own one to three emails (set_signal_emails, removed with clear_signal_emails) that its people get instead of the main sequence; {{signal_line}} in them becomes one sentence about what was found at each company. Then offer to activate it. "
             "When a user states a new goal or changes who to reach, save it with create_campaign, or with update_campaign on a campaign from list_campaigns. activate_campaign starts finding prospects and signals and prepares messaging for review; it never sends. Its first call returns needs_confirmation and will_happen: show will_happen word for word, wait for a clear yes, then call again with confirmation. "
+            "After activation the Email step runs in this order: get_campaign_email shows the sequence, enrollment and the checks left; save_campaign_sequence saves the main sequence after the customer says yes to every step; enroll_campaign_people enrolls the Golden List (nothing is sent while sending is off, so the campaign is then ready to send); start_campaign_sending switches sending on and emails real prospects, only after a clear yes to its will_happen. Report checks that are not ok in plain words. get_campaign_results reads sent emails, replies and website visits; get_email_sending_settings reads mailboxes, limits, days and deliverability. "
             "Present the returned message faithfully, preserving its meaning, paragraph breaks and any clarification. Sent is a recorded provider send, never delivery or an open; queued/sending/uncertain/failed/skipped are not sent. Status reads do not send emails. "
             "Use the backend acknowledgment and concise progress wording. Use Markdown tables for contact results. Contact results use Name | Company | Title | Email | LinkedIn, one person per row. Preserve recorded uncertainty in Email status or Source columns when needed. Use Pending for unfinished or blocked lookup; Not found only after completed enrichment without a result. Progress, blockers, questions and next actions use Task | Status | Next step. Downloads use File | Status with clickable links. Honor an explicit request for another format. Omit internal steps and repeated caveats. "
             "For an ICP definition or targeting criteria use get_my_icp. For an ICP LIST, main list, golden list, prospect list or download my list use get_prospect_list. Discover all accessible lists with list_golden_lists and read every saved contact with read_golden_list. "
@@ -1218,6 +1234,59 @@ def create_server(api: TaskApiClient) -> FastMCP:
         if isinstance(data, dict):
             data = {**data, "view_in_producerspark": campaign_page(campaign_id)}
         return data
+
+    @server.tool(annotations=READ)
+    async def get_campaign_email(campaign_id: PositiveId) -> dict:
+        """Read a campaign's Email step: its saved sequence (steps, revision), how many people are enrolled and not enrolled yet, sent, queued and replied counts, whether it is sending, and checks: what is still missing before sending can start (email_agent, sequence, mailbox, people), with ready_to_send. Use it before and after each Email step and to answer whether a campaign is ready to send. Use a campaign_id from list_campaigns. Reads only; nothing is sent."""
+        return with_campaign_link({"id": campaign_id, **await api.request("GET", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email")})
+
+    @server.tool(annotations=SAVE)
+    async def save_campaign_sequence(campaign_id: PositiveId, steps: SequenceSteps, revision: Annotated[str | None, Field(description="The sequence.revision from get_campaign_email when you read it before editing. Leave out to replace whatever is saved now.")] = None) -> dict:
+        """Save a campaign's main sequence: the emails (and any LinkedIn steps) every enrolled person gets, on their days. It is the same sequence the campaign's Messaging tab shows. Write it in the customer's words, show every step and get a clear yes before saving. A signal's own emails (set_signal_emails) take the place of the first emails for that signal's people. Saves only: nothing is enrolled or sent; a campaign that is already sending gets the new wording on its live emails, and changing the number or days of steps needs sending paused first. A 409 means the sequence changed since it was read: read it again with get_campaign_email. Returns the same shape as get_campaign_email."""
+        body = {"steps": [step.model_dump() for step in steps]}
+        if revision is not None:
+            body["revision"] = revision
+        return with_campaign_link({"id": campaign_id, **await api.request("PUT", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/sequence", body=body)})
+
+    @server.tool(annotations=SAVE)
+    async def enroll_campaign_people(campaign_id: PositiveId, limit: Annotated[int, Field(ge=1, le=1000, description="Most people to enroll in this call. Leave out for everyone not enrolled yet, up to 1,000.")] = 1000) -> dict:
+        """Enroll the people on a campaign's Golden List in its email sequence, everyone not enrolled yet unless limit is given. Excluded people and restricted companies are never enrolled, and anyone the sequence cannot email is listed in skipped with the reason. Enrolling sends nothing while sending is off; people then wait, ready, until start_campaign_sending. When sending is already on, their first email goes out about fifteen minutes later, so say that first. Each person's custom first email from signal research replaces Email 1 for them. Returns enrolled_count, skipped, remaining and the get_campaign_email shape; report how many were enrolled and the skipped reasons."""
+        enrolled, skipped, result = 0, [], {}
+        while enrolled < limit:
+            result = await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/enroll",
+                                       body={"limit": min(ENROLL_BATCH, limit - enrolled)}, timeout_seconds=120.0)
+            enrolled += result.get("enrolled_count", 0)
+            skipped += result.get("skipped", [])
+            if not result.get("enrolled_count") or not result.get("remaining"):
+                break
+        return with_campaign_link({"id": campaign_id, **result, "enrolled_count": enrolled, "skipped": skipped})
+
+    @server.tool(annotations=ACTIVATE)
+    async def start_campaign_sending(campaign_id: PositiveId, confirmation: Confirmation | None = None) -> dict:
+        """Switch a campaign's sending on: the enrolled people start getting its sequence, from the account's mailboxes, on its sending days and hours. This emails real prospects. Use only when the user asked to start sending this campaign. The first call sends nothing: it returns needs_confirmation and will_happen (the sequence, how many people, which mailboxes and days). Show will_happen word for word, wait for a clear yes, then call again with the same campaign_id and that confirmation. A 400 error names what is missing (the sequence, a mailbox or enrolled people): fix that first. Returns the get_campaign_email shape with sending true."""
+        body = {"confirmation": confirmation} if confirmation is not None else {}
+        return with_campaign_link({"id": campaign_id, **await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/start", body=body)})
+
+    @server.tool(annotations=SAVE)
+    async def pause_campaign_sending(campaign_id: PositiveId) -> dict:
+        """Stop a campaign's sending, email and LinkedIn steps both. Enrolled people keep their place, and start_campaign_sending switches it back on. Nothing is sent or deleted; pausing is always safe. Returns the get_campaign_email shape."""
+        return with_campaign_link({"id": campaign_id, **await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/pause")})
+
+    @server.tool(annotations=READ)
+    async def get_campaign_results(campaign_id: PositiveId) -> dict:
+        """Read a campaign's results, as its Results tab shows them: prospects found and reviewed, signals, emails prepared, enrolled, sent and replied (personal and automatic replies apart), sends per day, every sent email with its person, mailbox, step and outcome and any visit to their website from that company, every reply with its sender, subject and kind, research progress and the last search. Sent is a recorded provider send, not an open or inbox receipt. Reads only."""
+        return with_campaign_link({"id": campaign_id, **await api.request("GET", f"/api/v1/agent-tasks/campaigns/{campaign_id}/results")})
+
+    @server.tool(annotations=READ)
+    async def get_email_sending_settings() -> dict:
+        """Read the account's sending settings: whether sending is on, send_on_weekends, the daily limit and each mailbox's limit, minutes between sends, sending hours, stop on reply, and each connected mailbox with whether it is ready (and why not), in rotation, SPF/DKIM/DMARC, queued sends and deliverability over 7 and 30 days with inbox placement. Reads only."""
+        return await api.request("GET", "/api/v1/agent-tasks/email/sending-settings")
+
+    @server.tool(annotations=SAVE)
+    async def update_email_sending_settings(send_on_weekends: Annotated[bool | None, Field(description="true to send every day, false for Monday to Friday only.")] = None, daily_limit: Annotated[int | None, Field(ge=1, description="Most emails the account sends in a day.")] = None) -> dict:
+        """Change the account's sending days or daily limit, for every campaign. Say the change back and get a clear yes first. Waiting first emails move onto the new days. Returns the settings as get_email_sending_settings does. A 400 error names a value outside what the account allows."""
+        body = {key: value for key, value in {"send_on_weekends": send_on_weekends, "daily_limit": daily_limit}.items() if value is not None}
+        return await api.request("PATCH", "/api/v1/agent-tasks/email/sending-settings", body=body)
 
     register_agent_tools(server, api)
     register_recorder(server, api)

@@ -51,7 +51,7 @@ INSTRUCTIONS = (
     "A teammate works in the account owner's account: results then carry acting_in_account, so say whose account it is. If a tool says the person works in more than one account, ask which and pass account_id. "
     "Every result reports what actually happened. If a result has a non-empty not_done list, tell the user what was not done and why; never describe the request as complete. "
     "A tool error saying the agent is not on the account means the user does not have that agent; say so plainly and do not retry. "
-    "Email Agent: get_email_sequence reads the emails a list sends and its sending counts, and pause_email_agent stops sending; pausing is always safe. Starting the Email Agent, editing its emails and enrolling people are done in ProducerSpark in the browser, never from here. "
+    "Email Agent: get_email_sequence reads the emails a list sends and its sending counts, and pause_email_agent stops sending; pausing is always safe. For a campaign, use get_campaign_email, save_campaign_sequence, enroll_campaign_people, start_campaign_sending and pause_campaign_sending with its campaign_id from list_campaigns. "
     "To show a clip or a recording, call show_recording, which plays the clips inside the chat; do not give video links unless the user asks for one. Recording a new video: call record_in_chat, which shows a recorder inside the chat; the user records and presses Use this recording, and the recorder itself shows the editing progress and the finished clips, so do not ask them to report back; when they next write, read the result with get_recording or list_recordings. If the user says no recorder appeared, or asks for a link, call start_browser_recording, give them its record_url as a link to open, and then call wait_for_recording with its started_at, repeating while the status is waiting; do not ask them to tell you when they are done. add_recording brings in an existing video or audio file by direct link instead."
 )
 
@@ -191,5 +191,5 @@ def register(server, api) -> None:
 
     @server.tool(annotations=WRITE)
     async def pause_email_agent(idempotency_key: UUID, campaign_id: ListId | None = None, account_id: AccountId | None = None) -> dict:
-        """Stop the Email Agent sending for a golden list. Enrolled people keep their place. Nothing is sent or deleted. Sending can only be switched back on in ProducerSpark in the browser, so tell the user that."""
+        """Stop the Email Agent sending for a golden list. Enrolled people keep their place. Nothing is sent or deleted. For a campaign, start_campaign_sending switches it back on."""
         return await act("pause_email_agent", campaign_id=campaign_id, idempotency_key=idempotency_key, account_id=account_id)
