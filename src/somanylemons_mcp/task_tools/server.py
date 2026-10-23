@@ -493,6 +493,20 @@ def with_site_link(goal_id, result: dict) -> dict:
     }
 
 
+def titles_in_annotations(server: FastMCP) -> None:
+    """Copy each tool's title into its own annotations.title, as directories read it there.
+
+    Shared constants such as READ stay untouched: every tool gets its own copy with the
+    same hints plus its title.
+    """
+    for tool in server._tool_manager.list_tools():
+        if not tool.title:
+            raise ValueError(f"Tool {tool.name} needs a title.")
+        tool.annotations = (tool.annotations or ToolAnnotations()).model_copy(
+            update={"title": tool.title}
+        )
+
+
 def create_server(api: TaskApiClient) -> FastMCP:
     server = TaskFastMCP(
         api,
@@ -557,7 +571,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         """What this account can do right now. Call it first when the user has just connected, says hello, asks what ProducerSpark can do or how to start, or when you do not know which agents the account has. It returns the agents on the account, free_prospects (granted, used, remaining) for someone on the free trial, can_search_people, example_requests, campaigns (each with its name, status, three steps and Golden List), has_campaign and next_step. Follow next_step: greet the user by first_name when it is set, say in one or two sentences what they can do, and ask who they want to reach. When has_campaign is false, ask who they want to reach, read it back with check_campaign_item, save it with create_campaign after a clear yes, then do the same for their target signals and what they offer with update_campaign, then offer to activate it with activate_campaign; do this before any search. When has_campaign is true, the default campaign is what the agents are working toward. Offer only what agents lists; the agents in not_on_this_account are not available, so do not call their tools. When can_search_people is false, give upgrade_url and do not start a search. Always end with results_url as a clickable Markdown link labelled Open ProducerSpark: it is where they see their agent, free prospects left, every search and its Excel download. Give upgrade_url as a link labelled See plans whenever plans come up. Reads only; nothing is searched or charged."""
         return await api.request("GET", "/api/v1/agent-tasks/getting-started")
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get Email Agent status", annotations=READ)
     async def get_email_agent_status(
         config_id: PositiveId | None = None,
         campaign_id: PositiveId | None = None,
@@ -577,6 +591,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         )
 
     @server.tool(
+        title="Ask the Email Agent",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -607,7 +622,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             timeout_seconds=150.0,
         )
 
-    @server.tool(annotations=READ)
+    @server.tool(title="List tasks", annotations=READ)
     async def list_tasks(
         state: TaskView = "", page: Annotated[int, Field(ge=1, le=100000)] = 1
     ) -> dict:
@@ -617,7 +632,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         )
         return list_task_navigation(response)
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get task", annotations=READ)
     async def get_task(goal_id: PositiveId, include_history: bool = False, historical_snapshot: bool = False) -> dict:
         """Read the current answer with matching version/actions; historical_snapshot=true reads the original. Conference totals count roster entries, not distinct individuals; email-bearing entries differ from distinct addresses. Use include_history=true for past-email questions: it reads bounded outgoing sent-status history and event metadata, never bodies or receipts. Final gates do not prove no earlier authorized snapshot was sent; sent status is not inbox or attachment proof."""
         resolved = await resolve_current_answer(api, goal_id, historical_snapshot=historical_snapshot)
@@ -646,7 +661,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
                 answer["requested_goal_history"] = original_history
         return answer if include_history else brief_answer(answer)
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get research answer", annotations=READ)
     async def get_research_answer(
         goal_id: PositiveId,
         agency_page: Annotated[int, Field(ge=1)] = 1,
@@ -721,7 +736,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
                 return {"wait_status": "still_running", "progress_changed_during_wait": False, "task": answer}
             await asyncio.sleep(min(5, remaining))
 
-    @server.tool(annotations=WRITE, meta=PEOPLE_UI)
+    @server.tool(title="Find people", annotations=WRITE, meta=PEOPLE_UI)
     async def find_people(
         request: Annotated[str, Field(min_length=1, max_length=10000)],
         idempotency_key: UUID | None = None,
@@ -761,7 +776,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "email_delivery": result.get("delivery", {}),
         })
 
-    @server.tool(annotations=WRITE, meta=PEOPLE_UI)
+    @server.tool(title="Run deep search", annotations=WRITE, meta=PEOPLE_UI)
     async def deep_search(goal_id: PositiveId, decline: bool = False) -> dict:
         """Slower second pass over the people a find_people search could not place. Pass the goal_id that find_people returned, and only after the user accepted the offer or asked up front to find everyone. It retries other spellings of each name, then the web, and returns only the additions, usually within a few minutes; the account owner is emailed a summary with the updated workbook attached. Each row carries match: confirmed means a contact record has the requested name and employer and costs coverage credits_per_find credits; possible is a profile that could not be confirmed, is free, carries no email and must be shown as a possible match to check, never as a finding. Report coverage.confirmed, coverage.possible, how many are in coverage.not_found, how many already-listed people still have no email (coverage.still_without_email), coverage.credits_charged and credits.remaining. A row's listed_name is who that person was listed as in the first results; it replaces that row. Present rows in the contact table with a Match column. If status is still_running, call again with the same goal_id; one search has one deep search, so calling again never starts or charges a second. If status is upgrade_required or coverage.held_for_credits is above 0, tell the user plainly that their credits are used up and give them upgrade_url; never work around it. Pass decline=true instead when the user does not want the deep search: nothing is searched or charged and the first search's results are emailed as they stand, with status results_emailed. Each result has view_in_producerspark, the page for this search on the ProducerSpark site with its Excel download and every earlier search: The people are also shown as cards with their headshots where the chat supports it; still write the contact table, since the cards carry no emails. Each result also has reply_must_end_with, that link ready to paste: every reply that reports this result ends with the reply_must_end_with line exactly as given, even a short reply, so the user knows where to go. No prospect outreach."""
         try:
@@ -796,7 +811,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "email_delivery": result.get("delivery", {}),
         })
 
-    @server.tool(annotations=WRITE, meta=PEOPLE_UI)
+    @server.tool(title="Get full list", annotations=WRITE, meta=PEOPLE_UI)
     async def full_list(goal_id: PositiveId) -> dict:
         """Pull everyone a find_people search listed, when it returned only part of them. Pass the goal_id that find_people returned, and only after the user asked for the full list, the rest or all of them. It reruns that same request for everyone who matched, up to 200 people per company, and returns the complete list in the same shape as find_people, usually within one to three minutes; the account owner is emailed a summary with the workbook attached. The earlier figure counted matches before screening, so the full list is usually somewhat smaller: report coverage.returned against coverage.full_list.people and say so. People already delivered by the first search are not charged again. If status is still_running, call again with the same goal_id; one search has one full list, so calling again never starts or charges a second. If status is upgrade_required, credits.exhausted is true or coverage.held_for_credits is above 0, tell the user plainly that their free prospects (or credits) are used up and give them upgrade_url; never work around it. When coverage.deep_search is present, offer the deep search as for find_people, using the goal_id this call returns. Each result has view_in_producerspark, the page for this search on the ProducerSpark site with its Excel download and every earlier search: The people are also shown as cards with their headshots where the chat supports it; still write the contact table, since the cards carry no emails. Each result also has reply_must_end_with, that link ready to paste: every reply that reports this result ends with the reply_must_end_with line exactly as given, even a short reply, so the user knows where to go. No prospect outreach."""
         try:
@@ -821,7 +836,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "email_delivery": result.get("delivery", {}),
         })
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Request business research", annotations=WRITE)
     async def create_business_research_request(
         request: Annotated[str, Field(min_length=1, max_length=10000)],
         idempotency_key: UUID,
@@ -847,7 +862,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await api.request("POST", "/api/v1/agent-tasks/business-research", body=body)
         )
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Request research", annotations=WRITE)
     async def create_research_request(
         agencies: Agencies,
         idempotency_key: UUID,
@@ -872,7 +887,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         )
         return compact_research_answer(await api.request("POST", "/api/v1/agent-tasks", body=body))
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Request agency milestone", annotations=WRITE)
     async def request_agency_first15_milestone(
         goal_id: PositiveId, expected_version: PositiveId, expected_revision: PositiveId, idempotency_key: UUID,
     ) -> dict:
@@ -885,7 +900,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "expected_version": expected_version, "expected_revision": expected_revision,
             "idempotency_key": str(idempotency_key)})
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get agency milestone", annotations=READ)
     async def get_agency_milestone(goal_id: PositiveId, milestone_id: PositiveId | None = None,
                                    page: Annotated[int, Field(ge=1, le=3)] = 1) -> dict:
         """Read saved milestone metadata or a checked five-contact page.
@@ -895,7 +910,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/milestones",
                                  params={"page": page, **({"milestone_id": milestone_id} if milestone_id else {})})
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Request conference research", annotations=WRITE)
     async def create_conference_research_request(
         event_id: Literal["acams-las-vegas-2026", "rsa-usa-2026", "icba-live-2026", "acfe-global-2026", "aba-aml-fraud-2026", "afp-2026"],
         request: Annotated[str, Field(min_length=1, max_length=2000)],
@@ -927,7 +942,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             body["inputs"] = inputs
         return compact_research_answer(await api.request("POST", f"/api/v1/agent-tasks/{goal_id}/actions", body=body))
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Supply business inputs", annotations=WRITE)
     async def supply_business_inputs(
         goal_id: PositiveId,
         spec: Annotated[dict[str, JsonValue], Field(description="Copy the saved partial_spec and fill only input_required.missing_fields with literal customer criteria; at most 20000 serialized JSON characters. Backend validates scope, fields and authority.")],
@@ -943,7 +958,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         return await control(goal_id, "supply_input", expected_version, idempotency_key, reason,
             {"spec": spec, "expected_revision": expected_revision, "input_binding": input_binding})
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Supply agency names", annotations=WRITE)
     async def supply_agency_names(
         goal_id: PositiveId,
         agencies: Agencies,
@@ -965,28 +980,28 @@ def create_server(api: TaskApiClient) -> FastMCP:
             },
         )
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Pause task", annotations=WRITE)
     async def pause_task(
         goal_id: PositiveId, expected_version: PositiveId, idempotency_key: UUID, reason: Reason
     ) -> dict:
         """Pause future work if allowed by the current task. Existing external operations still require reconciliation."""
         return await control(goal_id, "pause", expected_version, idempotency_key, reason)
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Resume task", annotations=WRITE)
     async def resume_task(
         goal_id: PositiveId, expected_version: PositiveId, idempotency_key: UUID, reason: Reason
     ) -> dict:
         """Resume paused, user-authorized work under the existing scope and budget."""
         return await control(goal_id, "resume", expected_version, idempotency_key, reason)
 
-    @server.tool(annotations=CANCEL)
+    @server.tool(title="Cancel task", annotations=CANCEL)
     async def cancel_task(
         goal_id: PositiveId, expected_version: PositiveId, idempotency_key: UUID, reason: Reason
     ) -> dict:
         """Cancel future execution at the user's request. Cannot undo an already accepted send."""
         return await control(goal_id, "cancel", expected_version, idempotency_key, reason)
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Retry task", annotations=WRITE)
     async def retry_task(
         goal_id: PositiveId,
         task_id: PositiveId,
@@ -999,12 +1014,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
             goal_id, "retry", expected_version, idempotency_key, reason, {"task_id": task_id}
         )
 
-    @server.tool(annotations=READ)
+    @server.tool(title="List research schedules", annotations=READ)
     async def list_schedules() -> dict:
         """List recurring research schedules with their next occurrence, timezone and enabled state."""
         return await api.request("GET", "/api/v1/agent-tasks/schedules")
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Create research schedule", annotations=WRITE)
     async def create_research_schedule(
         name: Annotated[str, Field(min_length=1, max_length=200)],
         agencies: Agencies,
@@ -1033,19 +1048,19 @@ def create_server(api: TaskApiClient) -> FastMCP:
             body["config_id"] = config_id
         return await api.request("POST", "/api/v1/agent-tasks/schedules", body=body)
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Turn schedule on or off", annotations=WRITE)
     async def set_schedule_enabled(schedule_id: PositiveId, is_enabled: bool) -> dict:
         """Enable or pause an existing research schedule when the user requests it. This updates future occurrences only."""
         return await api.request(
             "POST", f"/api/v1/agent-tasks/schedules/{schedule_id}", body={"is_enabled": is_enabled}
         )
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get task file", annotations=READ)
     async def get_task_artifact(goal_id: PositiveId, artifact_id: PositiveId) -> dict:
         """Retrieve the authorized saved Excel file for inspection here, including under a do-not-send request or held final gates. Requested review/download needs no additional read permission. Return download_url as a clickable link. Retrieval never starts research, authorizes email or clears delivery gates."""
         return await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/download-link")
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Read task spreadsheet", annotations=READ)
     async def read_task_spreadsheet(goal_id: PositiveId, artifact_id: PositiveId, sheet_name: str | None = None, include_rows: bool = True) -> dict:
         """Read the complete saved spreadsheet in one call; no five-contact pagination. Includes all sheets unless sheet_name is supplied. For sheet names, headers or counts only, set include_rows=false and quote sheets_summary exactly. Full analysis uses include_rows=true. Explicitly reports truncation; do not print rows unless asked."""
         data = await api.request("GET", f"/api/v1/agent-tasks/{goal_id}/artifacts/{artifact_id}/spreadsheet",
@@ -1057,7 +1072,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
                                      for sheet in data.get("sheets", [])])
         return {"sheets_summary": summary, **data}
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get my ICP", annotations=READ)
     async def get_my_icp(config_id: PositiveId | None = None, campaign_id: PositiveId | None = None) -> dict:
         """Get my saved ICP (ideal customer profile), targeting criteria and account profile, plus an Excel download. Use for ICP targeting definitions. If the user means their ICP LIST or main contact/prospect list, use get_prospect_list/read_golden_list instead. Never infer an ICP from attendees. When status is not_saved, state briefly that targeting criteria are unavailable and the download contains account metadata only."""
         data = await api.request("GET", "/api/v1/agent-tasks/icp", params={k: v for k, v in {"config_id": config_id, "campaign_id": campaign_id}.items() if v is not None})
@@ -1065,25 +1080,25 @@ def create_server(api: TaskApiClient) -> FastMCP:
             return {"notice": "No saved ICP targeting criteria or profile are available for this account. The Excel download contains account metadata only.", **data}
         return data
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get prospect list", annotations=READ)
     async def get_prospect_list(goal_id: PositiveId | None = None, config_id: PositiveId | None = None, campaign_id: PositiveId | None = None) -> dict:
         """Download my MAIN golden/prospect/ICP list as Excel using owned or explicitly shared list access. Defaults to the canonical main golden list, never a conference workbook. Specify campaign_id to choose another accessible list. Only use goal_id for an explicitly requested research-task workbook. A saved snapshot can have unfinished enrichment; state actual coverage briefly. No research or sends."""
         return await api.request("GET", "/api/v1/agent-tasks/prospect-list",
                                  params={k: v for k, v in {"goal_id": goal_id, "config_id": config_id, "campaign_id": campaign_id}.items() if v is not None})
 
-    @server.tool(annotations=READ)
+    @server.tool(title="List Golden Lists", annotations=READ)
     async def list_golden_lists(config_id: PositiveId | None = None) -> dict:
         """List my owned and explicitly shared main golden/ICP/prospect lists. Never ask for an account/config ID before checking these accessible lists. Does not expose unrelated owner accounts."""
         return await api.request("GET", "/api/v1/agent-tasks/golden-lists",
                                  params={"config_id": config_id} if config_id else None)
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Read Golden List", annotations=READ)
     async def read_golden_list(campaign_id: PositiveId | None = None, config_id: PositiveId | None = None, include_rows: bool = True) -> dict:
         """Read all saved main golden-list contacts, emails, verification and enrichment fields in ONE call. This is the canonical main list, not a research-task workbook. Defaults to the main list; campaign_id chooses another accessible list. Set include_rows=false for counts only. Never starts research, enrollment or sends."""
         return await api.request("GET", "/api/v1/agent-tasks/golden-lists/read",
                                  params={k: v for k, v in {"campaign_id": campaign_id, "config_id": config_id, "include_rows": include_rows}.items() if v is not None})
 
-    @server.tool(annotations=READ)
+    @server.tool(title="List campaigns", annotations=READ)
     async def list_campaigns() -> dict:
         """List my campaigns. Each has its three steps (targeting: the prospects' industry and titles; signals: the target signals in the customer's words, with signal_items as those signals split one per entry; offering: what they offer), optional objective and messaging, name, status (draft, active or paused), is_default, its Golden List and results: prospects, signals, messages prepared and intelligence (ready, no_signal, queued, running, held, failed, pending prospects of signal research). The Golden List is reached through its campaign. Call it before update_campaign, activate_campaign, signal_search or get_prospect_intelligence to get a real campaign_id. Show each campaign's view_in_producerspark as a clickable link. Reads only."""
         data = await api.request("GET", "/api/v1/agent-tasks/campaigns")
@@ -1091,7 +1106,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             data = {**data, "campaigns": [with_campaign_link(item) for item in data["campaigns"]]}
         return data
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Create campaign", annotations=SAVE)
     async def create_campaign(
         idempotency_key: UUID,
         targeting: CampaignTargeting,
@@ -1109,7 +1124,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         body["creation_key"] = str(idempotency_key)
         return with_campaign_link(await api.request("POST", "/api/v1/agent-tasks/campaigns", body=body))
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Update campaign", annotations=SAVE)
     async def update_campaign(
         campaign_id: PositiveId,
         name: CampaignName | None = None,
@@ -1128,14 +1143,14 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
         )
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Add campaign signal", annotations=SAVE)
     async def add_campaign_signal(campaign_id: PositiveId, text: SignalText) -> dict:
         """Add one target signal to a campaign in the customer's words, verbatim. The backend turns it into one search per source it can be checked from (website, news, event, job postings) and keeps the campaign's other signals as they are; a line nothing can check comes back declined with the reason. Read it back with check_campaign_item (field signals) and get a clear yes first. Returns the campaign with signal_items, each with its summary (what will be searched, in one line), check_from and checkable; show the summary of what was added. On an active campaign, a changed set of signals makes every prospect due for research again (three are tried first); nobody is charged twice for a person. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
             await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals", body={"text": text})
         )
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Update campaign signal", annotations=SAVE)
     async def update_campaign_signal(campaign_id: PositiveId, signal_key: SignalKey, text: SignalText) -> dict:
         """Replace one target signal with new wording from the customer, verbatim; the campaign's other signals stay as they are. Use the signal's key from signal_items on list_campaigns. The backend turns the new text into the search it becomes and returns the campaign with signal_items; show the changed signal's summary. Read the new wording back with check_campaign_item (field signals) and get a clear yes first. On an active campaign, a changed signal makes every prospect due for research again (three are tried first); nobody is charged twice for a person. A 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
@@ -1144,14 +1159,14 @@ def create_server(api: TaskApiClient) -> FastMCP:
             )
         )
 
-    @server.tool(annotations=CANCEL)
+    @server.tool(title="Delete campaign signal", annotations=CANCEL)
     async def delete_campaign_signal(campaign_id: PositiveId, signal_key: SignalKey) -> dict:
         """Remove one target signal from a campaign, and its Golden List filter, after the customer clearly asked for that signal to go. Use the key from signal_items on list_campaigns and say which signal (its summary) will be removed before calling. Research already done for it stays on the prospects. Returns the campaign with the remaining signal_items. A 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
             await api.request("DELETE", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}")
         )
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Set signal emails", annotations=SAVE)
     async def set_signal_emails(campaign_id: PositiveId, signal_key: SignalKey, emails: SignalEmails) -> dict:
         """Give one target signal its own short email sequence: the people that signal was found at get these emails instead of the campaign's main sequence (someone found under two signals gets the first signal's). Use the key from signal_items on list_campaigns. Write the emails in the customer's words; start the first with {{first_name}} and {{signal_line}}, which becomes one sentence about what was found at that person's company. Show the emails and get a clear yes first. Returns the campaign with signal_emails by key. Saves only; sending stays on the Email Agent's own schedule. A 400 error carries a plain reason; a 404 means the campaign or the signal key is unknown. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
@@ -1162,14 +1177,14 @@ def create_server(api: TaskApiClient) -> FastMCP:
             )
         )
 
-    @server.tool(annotations=CANCEL)
+    @server.tool(title="Clear signal emails", annotations=CANCEL)
     async def clear_signal_emails(campaign_id: PositiveId, signal_key: SignalKey) -> dict:
         """Remove one signal's own emails after the customer asked for that; its people go back to the campaign's main sequence. Use the key from signal_items on list_campaigns. Returns the campaign with the remaining signal_emails. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
         return with_campaign_link(
             await api.request("DELETE", f"/api/v1/agent-tasks/campaigns/{campaign_id}/signals/{signal_key}/emails")
         )
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Check campaign step", annotations=READ)
     async def check_campaign_item(
         field: CampaignField,
         text: Annotated[str, Field(min_length=1, max_length=5000, description="What the customer wrote for that box, verbatim.")],
@@ -1182,7 +1197,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         }.items() if value is not None}
         return await api.request("POST", "/api/v1/agent-tasks/campaigns/assist/check", body=body)
 
-    @server.tool(annotations=ACTIVATE)
+    @server.tool(title="Activate campaign", annotations=ACTIVATE)
     async def activate_campaign(campaign_id: PositiveId, confirmation: Confirmation | None = None) -> dict:
         """Activate a campaign: find its first 100 prospects and add them to its Golden List, then research each one against the campaign's target signals and write a custom first email, which the customer reviews on the Golden List and which replaces Email 1 when they enroll that person. One credit per prospect found, and per prospect researched 1 credit per signal on the campaign (research_credits_per_prospect), charged only when every signal was answered; nothing is sent and nobody is enrolled. Activation needs all three steps, targeting, signals and offering; a 400 error names the missing step, so ask the user for it, read it back with check_campaign_item, save it with update_campaign and try again. The first call activates nothing: it returns needs_confirmation, will_happen and confirmation. Show will_happen to the user word for word, for example Start finding prospects and signals for Texas producers and prepare messaging for your review, wait for a clear yes, then call again with the same campaign_id and that confirmation. A 404 means the campaign is unknown or archived. Show view_in_producerspark as a clickable link."""
         body = {"confirmation": confirmation} if confirmation is not None else {}
@@ -1190,7 +1205,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/activate", body=body)
         )
 
-    @server.tool(annotations=WRITE)
+    @server.tool(title="Search for signals", annotations=WRITE)
     async def signal_search(
         request: Annotated[str, Field(min_length=1, max_length=10000)],
         campaign_id: PositiveId | None = None,
@@ -1219,7 +1234,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "coverage": result.get("coverage", {}),
         })
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get prospect intelligence", annotations=READ)
     async def get_prospect_intelligence(
         campaign_id: PositiveId,
         status: Annotated[str | None, Field(description="Only rows in this state: ready, no_signal, queued, running, held or failed. Leave out for all.")] = None,
@@ -1235,12 +1250,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
             data = {**data, "view_in_producerspark": campaign_page(campaign_id)}
         return data
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get campaign email step", annotations=READ)
     async def get_campaign_email(campaign_id: PositiveId) -> dict:
         """Read a campaign's Email step: its saved sequence (steps, revision), how many people are enrolled and not enrolled yet, sent, queued and replied counts, whether it is sending, and checks: what is still missing before sending can start (email_agent, sequence, mailbox, people), with ready_to_send. Use it before and after each Email step and to answer whether a campaign is ready to send. Use a campaign_id from list_campaigns. Reads only; nothing is sent."""
         return with_campaign_link({"id": campaign_id, **await api.request("GET", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email")})
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Save campaign sequence", annotations=SAVE)
     async def save_campaign_sequence(campaign_id: PositiveId, steps: SequenceSteps, revision: Annotated[str | None, Field(description="The sequence.revision from get_campaign_email when you read it before editing. Leave out to replace whatever is saved now.")] = None) -> dict:
         """Save a campaign's main sequence: the emails (and any LinkedIn steps) every enrolled person gets, on their days. It is the same sequence the campaign's Messaging tab shows. Write it in the customer's words, show every step and get a clear yes before saving. A signal's own emails (set_signal_emails) take the place of the first emails for that signal's people. Saves only: nothing is enrolled or sent; a campaign that is already sending gets the new wording on its live emails, and changing the number or days of steps needs sending paused first. A 409 means the sequence changed since it was read: read it again with get_campaign_email. Returns the same shape as get_campaign_email."""
         body = {"steps": [step.model_dump() for step in steps]}
@@ -1248,7 +1263,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             body["revision"] = revision
         return with_campaign_link({"id": campaign_id, **await api.request("PUT", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/sequence", body=body)})
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Enroll campaign people", annotations=SAVE)
     async def enroll_campaign_people(campaign_id: PositiveId, limit: Annotated[int, Field(ge=1, le=1000, description="Most people to enroll in this call. Leave out for everyone not enrolled yet, up to 1,000.")] = 1000) -> dict:
         """Enroll the people on a campaign's Golden List in its email sequence, everyone not enrolled yet unless limit is given. Excluded people and restricted companies are never enrolled, and anyone the sequence cannot email is listed in skipped with the reason. Enrolling sends nothing while sending is off; people then wait, ready, until start_campaign_sending. When sending is already on, their first email goes out about fifteen minutes later, so say that first. Each person's custom first email from signal research replaces Email 1 for them. Returns enrolled_count, skipped, remaining and the get_campaign_email shape; report how many were enrolled and the skipped reasons."""
         enrolled, skipped, result = 0, [], {}
@@ -1261,28 +1276,28 @@ def create_server(api: TaskApiClient) -> FastMCP:
                 break
         return with_campaign_link({"id": campaign_id, **result, "enrolled_count": enrolled, "skipped": skipped})
 
-    @server.tool(annotations=ACTIVATE)
+    @server.tool(title="Start campaign sending", annotations=ACTIVATE)
     async def start_campaign_sending(campaign_id: PositiveId, confirmation: Confirmation | None = None) -> dict:
         """Switch a campaign's sending on: the enrolled people start getting its sequence, from the account's mailboxes, on its sending days and hours. This emails real prospects. Use only when the user asked to start sending this campaign. The first call sends nothing: it returns needs_confirmation and will_happen (the sequence, how many people, which mailboxes and days). Show will_happen word for word, wait for a clear yes, then call again with the same campaign_id and that confirmation. A 400 error names what is missing (the sequence, a mailbox or enrolled people): fix that first. Returns the get_campaign_email shape with sending true."""
         body = {"confirmation": confirmation} if confirmation is not None else {}
         return with_campaign_link({"id": campaign_id, **await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/start", body=body)})
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Pause campaign sending", annotations=SAVE)
     async def pause_campaign_sending(campaign_id: PositiveId) -> dict:
         """Stop a campaign's sending, email and LinkedIn steps both. Enrolled people keep their place, and start_campaign_sending switches it back on. Nothing is sent or deleted; pausing is always safe. Returns the get_campaign_email shape."""
         return with_campaign_link({"id": campaign_id, **await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/email/pause")})
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get campaign results", annotations=READ)
     async def get_campaign_results(campaign_id: PositiveId) -> dict:
         """Read a campaign's results, as its Results tab shows them: prospects found and reviewed, signals, emails prepared, enrolled, sent and replied (personal and automatic replies apart), sends per day, every sent email with its person, mailbox, step and outcome and any visit to their website from that company, every reply with its sender, subject and kind, research progress and the last search. Sent is a recorded provider send, not an open or inbox receipt. Reads only."""
         return with_campaign_link({"id": campaign_id, **await api.request("GET", f"/api/v1/agent-tasks/campaigns/{campaign_id}/results")})
 
-    @server.tool(annotations=READ)
+    @server.tool(title="Get email sending settings", annotations=READ)
     async def get_email_sending_settings() -> dict:
         """Read the account's sending settings: whether sending is on, send_on_weekends, the daily limit and each mailbox's limit, minutes between sends, sending hours, stop on reply, and each connected mailbox with whether it is ready (and why not), in rotation, SPF/DKIM/DMARC, queued sends and deliverability over 7 and 30 days with inbox placement. Reads only."""
         return await api.request("GET", "/api/v1/agent-tasks/email/sending-settings")
 
-    @server.tool(annotations=SAVE)
+    @server.tool(title="Update email sending settings", annotations=SAVE)
     async def update_email_sending_settings(send_on_weekends: Annotated[bool | None, Field(description="true to send every day, false for Monday to Friday only.")] = None, daily_limit: Annotated[int | None, Field(ge=1, description="Most emails the account sends in a day.")] = None) -> dict:
         """Change the account's sending days or daily limit, for every campaign. Say the change back and get a clear yes first. Waiting first emails move onto the new days. Returns the settings as get_email_sending_settings does. A 400 error names a value outside what the account allows."""
         body = {key: value for key, value in {"send_on_weekends": send_on_weekends, "daily_limit": daily_limit}.items() if value is not None}
@@ -1291,6 +1306,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
     register_agent_tools(server, api)
     register_recorder(server, api)
     register_people(server)
+    titles_in_annotations(server)
 
     @server.resource(
         "producerspark-task-artifact://{goal_id}/{artifact_id}",

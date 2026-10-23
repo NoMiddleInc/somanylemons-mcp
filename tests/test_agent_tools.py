@@ -33,6 +33,22 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
             if name not in read_only:
                 self.assertIn("idempotency_key", tool.inputSchema["required"], name)
 
+    async def test_every_tool_has_a_directory_title_in_its_annotations(self):
+        tools = await task_schemas()
+        self.assertEqual({tool.name for tool in tools}, set(TASK_TOOL_NAMES))
+        for tool in tools:
+            title = tool.annotations.title if tool.annotations else None
+            self.assertTrue(title and title.strip(), tool.name)
+            self.assertEqual(tool.title, title, tool.name)
+            self.assertLessEqual(len(title.split()), 5, tool.name)
+            self.assertNotIn("apollo", title.lower(), tool.name)
+            self.assertNotIn("\u2014", title, tool.name)
+        self.assertEqual(len({tool.annotations.title for tool in tools}), len(tools))
+        tools = {tool.name: tool for tool in tools}
+        self.assertEqual(tools["find_people"].annotations.title, "Find people")
+        self.assertTrue(tools["find_people"].annotations.readOnlyHint is False)
+        self.assertTrue(tools["list_posts"].annotations.readOnlyHint)
+
     async def test_get_started_reads_the_account_without_arguments(self):
         calls, result = await self._call(
             "get_started", {},
