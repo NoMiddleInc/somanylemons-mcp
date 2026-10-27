@@ -24,12 +24,12 @@ class FreshProspectRequestPolicyTests(unittest.IsolatedAsyncioTestCase):
     async def test_tools_and_all_skill_copies_disallow_historical_title_substitution(self):
         from somanylemons_mcp.task_bridge import task_schemas
         tools = {tool.name: tool for tool in await task_schemas()}
-        for name in ('list_tasks', 'create_business_research_request'):
-            description = tools[name].description
-            self.assertIn('fresh UUID', description)
-            self.assertIn('historical', description)
-            self.assertIn('verbatim', description)
-            self.assertIn('earlier in this conversation', description)
+        from somanylemons_mcp.task_bridge import SCHEMA_SERVER
+        instructions = SCHEMA_SERVER.instructions
+        self.assertIn('fresh UUID', instructions)
+        self.assertIn('matching titles do not authorize reuse', instructions)
+        self.assertIn('created earlier in this conversation', instructions)
+        self.assertIn('verbatim', tools['create_business_research_request'].description)
         for path in ('skills/producerspark/SKILL.md', 'plugins/producerspark/skills/producerspark/SKILL.md',
                      'src/somanylemons_mcp/skills/producerspark/SKILL.md'):
             text = (ROOT / path).read_text()

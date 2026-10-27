@@ -84,12 +84,23 @@ OVERVIEW = (
     "confirmation value. When a result has acting_in_account, say whose account it is."
 )
 
+# Usage guidance kept out of the tool descriptions, which describe only what each tool does
+# and returns (Claude directory rule). It follows OVERVIEW so it survives the same truncation.
+RESULT_RULES = (
+    "Show find_people rows as a contact table even when cards appear, and end every reply that "
+    "reports a search with the result's reply_must_end_with line. While a result's status is "
+    "still_running, call the same tool again with the same idempotency_key or goal_id. When coverage "
+    "offers full_list or deep_search, offer it and run it only after the user agrees. If credits are "
+    "used up (upgrade_required, credits.exhausted or held_for_credits), say so and give upgrade_url; "
+    "do not retry. Greet the user by get_started's first_name and offer only the agents it lists."
+)
+
 server = Server(
     "ProducerSpark",
     website_url="https://producerspark.com",
     icons=[Icon(src="https://producerspark.com/images/agents/prospect-custodian-v2.png", mimeType="image/png")],
     instructions=(
-        OVERVIEW + "\n\n" + RESEARCH_INSTRUCTIONS + "\n\n"
+        OVERVIEW + "\n\n" + RESULT_RULES + "\n\n" + RESEARCH_INSTRUCTIONS + "\n\n"
         "No research task authorizes content publishing or outreach. "
         + (SCHEMA_SERVER.instructions or "")
     ),

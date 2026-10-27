@@ -69,7 +69,9 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
         tools = {tool.name: tool for tool in await task_schemas()}
         for name in ("find_people", "deep_search", "full_list"):
             self.assertIn("reply_must_end_with", tools[name].description, name)
-        self.assertIn("Open ProducerSpark", tools["get_started"].description)
+        self.assertIn("results_url", tools["get_started"].description)
+        from somanylemons_mcp import server
+        self.assertIn("reply_must_end_with line", server.RESULT_RULES)
 
     async def test_reschedule_forwards_only_what_was_given_to_its_own_action(self):
         calls, result = await self._call(
@@ -172,6 +174,7 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
         for text in ("find_people", "list_posts", "list_recordings", "needs_confirmation", "will_happen", "clear yes"):
             self.assertIn(text, kept)
         self.assertLess(len(server.OVERVIEW), 800)
+        self.assertIn(server.RESULT_RULES, server.server.instructions[:2200])
 
     async def test_only_one_tool_starts_email_sending_and_it_asks_first(self):
         tools = {tool.name: tool for tool in await task_schemas()}

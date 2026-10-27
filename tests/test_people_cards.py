@@ -10,7 +10,9 @@ class PeopleCardTests(unittest.IsolatedAsyncioTestCase):
         tools = {tool.name: tool for tool in await task_schemas()}
         for name in ("find_people", "deep_search", "full_list"):
             self.assertEqual(tools[name].meta["ui"]["resourceUri"], PEOPLE_URI, name)
-            self.assertIn("still write the contact table", tools[name].description, name)
+            self.assertIn("the cards carry no emails", tools[name].description, name)
+        from somanylemons_mcp import server
+        self.assertIn("contact table even when cards appear", server.RESULT_RULES)
 
     async def test_a_search_that_could_not_finish_says_so_and_is_not_restarted(self):
         import httpx

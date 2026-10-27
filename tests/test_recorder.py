@@ -24,7 +24,9 @@ class RecorderTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("record_in_chat", TASK_TOOL_NAMES)
         self.assertEqual(tool.meta["ui"]["resourceUri"], RECORDER_URI)
         self.assertEqual(tool.inputSchema.get("required", []), [])
-        self.assertIn("start_browser_recording", tool.description)
+        self.assertIn("records nothing by itself", tool.description)
+        from somanylemons_mcp.task_bridge import SCHEMA_SERVER
+        self.assertIn("start_browser_recording", SCHEMA_SERVER.instructions)
         result = await invoke_task("record_in_chat", {"title": "Launch"}, api_url="https://example.invalid", api_key="scoped-owner")
         self.assertIn("recorder is shown", str(result))
 

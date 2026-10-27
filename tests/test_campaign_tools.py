@@ -60,8 +60,8 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools["activate_campaign"].annotations.readOnlyHint)
         self.assertFalse(tools["activate_campaign"].annotations.destructiveHint)
         self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "targeting"})
-        self.assertIn("three steps", tools["create_campaign"].description)
-        self.assertIn("all three steps, targeting, signals and offering", tools["activate_campaign"].description)
+        self.assertIn("required before activation", tools["create_campaign"].description)
+        self.assertIn("Needs targeting, signals and offering", tools["activate_campaign"].description)
         self.assertTrue(tools["check_campaign_item"].annotations.readOnlyHint)
         self.assertEqual(set(tools["check_campaign_item"].inputSchema["required"]), {"field", "text"})
         self.assertNotIn("list_campaign_signal_suggestions", tools)
@@ -298,9 +298,10 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(payload["has_campaign"], False)
         self.assertEqual(payload["campaigns"], [])
         tools = {tool.name: tool for tool in await task_schemas()}
-        description = tools["get_started"].description
-        for text in ("has_campaign is false", "create_campaign", "update_campaign", "activate_campaign"):
-            self.assertIn(text, description)
+        self.assertIn("has_campaign", tools["get_started"].description)
+        from somanylemons_mcp.task_bridge import SCHEMA_SERVER
+        for text in ("has_campaign false", "create_campaign", "update_campaign", "activate_campaign"):
+            self.assertIn(text, SCHEMA_SERVER.instructions)
 
     def test_instructions_walk_through_create_fill_activate(self):
         instructions = create_server(TaskApiClient(TaskApiConfig("https://example.com", "k"))).instructions

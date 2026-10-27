@@ -65,92 +65,92 @@ def register(server, api) -> None:
 
     @server.tool(title="Get posting overview", annotations=READ)
     async def get_posting_overview(account_id: AccountId | None = None) -> dict:
-        """Show where this account can post (connected LinkedIn and X accounts), its timezone and posts per week, how many posts are scheduled, in drafts or failed, and the next open slots. Read-only."""
+        """Where this account can post (connected LinkedIn and X accounts), its timezone and posts per week, how many posts are scheduled, in drafts or failed, and the next open slots. Reads only."""
         return await act("get_posting_overview", account_id=account_id)
 
     @server.tool(title="List posts", annotations=READ)
     async def list_posts(status: PostStatus | None = None, network: Network | None = None, deleted: bool = False, page: Annotated[int, Field(ge=1)] = 1, account_id: AccountId | None = None) -> dict:
-        """List the account's social posts, 30 per page, with id, status, network, text, scheduled time and media. Filter by status (draft, scheduled, posted, failed...) or network; deleted=true lists removed posts. Media links expire after a few minutes. Read-only."""
+        """The account's social posts, 30 per page, with id, status, network, text, scheduled time and media, filtered by status (draft, scheduled, posted, failed...) or network; deleted=true lists removed posts. Media links expire after a few minutes. Reads only."""
         return await act("list_posts", status=status, network=network, deleted=deleted or None, page=page, account_id=account_id)
 
     @server.tool(title="Get post", annotations=READ)
     async def get_post(post_id: PostId, account_id: AccountId | None = None) -> dict:
-        """Read one post: status, network, text, scheduled time, media and any problem blocking it. Read-only."""
+        """One post: status, network, text, scheduled time, media and any problem blocking it. Reads only."""
         return await act("get_post", post_id=post_id, account_id=account_id)
 
     @server.tool(title="Create post", annotations=WRITE)
     async def create_post(idempotency_key: UUID, caption: Caption = "", network: Network | None = None, account: Account | None = None, media_urls: MediaUrls | None = None, scheduled_for: When | None = None, timezone: Zone | None = None, next_open_slot: bool = False, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Create a social post as a draft. Optionally attach media from direct file links, and schedule it for a time or the next open slot in the same call. Without a time it stays an unscheduled draft and nothing is published. With a time, the first call only returns needs_confirmation and will_happen (where and exactly when it will post): show that to the user, and call again with confirmation after they say yes. If not_done is non-empty, the draft was saved but that step did not happen."""
+        """Creates a social post as a draft, optionally with media from direct file links, and optionally scheduled for a time or the next open slot. Without a time it stays an unscheduled draft and nothing is published. With a time, the first call schedules nothing and returns needs_confirmation, will_happen (where and exactly when it will post) and confirmation; scheduling happens only on a second call with that confirmation. A non-empty not_done means the draft was saved but that step did not happen."""
         return await act("create_post", timeout=180.0, idempotency_key=idempotency_key, caption=caption, network=network, account=account, media_urls=media_urls, scheduled_for=scheduled_for, timezone=timezone, next_open_slot=next_open_slot or None, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Update post", annotations=WRITE)
     async def update_post(post_id: PostId, idempotency_key: UUID, caption: Caption | None = None, network: Network | None = None, account: Account | None = None, media_urls: MediaUrls | None = None, remove_media: bool = False, account_id: AccountId | None = None) -> dict:
-        """Change a post's text, network or media. A scheduled post keeps its scheduled time. media_urls replaces all current media; remove_media=true removes it. A published post cannot be changed. If not_done is non-empty, read it: the post may now be an unscheduled draft."""
+        """Changes a post's text, network or media. A scheduled post keeps its time. media_urls replaces all current media; remove_media=true removes it. A published post cannot be changed. A non-empty not_done says what did not happen, for example that the post is now an unscheduled draft."""
         return await act("update_post", timeout=180.0, post_id=post_id, idempotency_key=idempotency_key, caption=caption, network=network, account=account, media_urls=media_urls, remove_media=remove_media or None, account_id=account_id)
 
     @server.tool(title="Schedule post", annotations=WRITE)
     async def schedule_post(post_id: PostId, idempotency_key: UUID, scheduled_for: When | None = None, timezone: Zone | None = None, next_open_slot: bool = False, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Schedule a draft, or move an already scheduled post to a new time (reschedule). Give scheduled_for, or set next_open_slot=true to take the account's next free posting slot. The post publishes automatically at that time. The first call schedules nothing: it returns needs_confirmation and will_happen, stating the account, weekday, date, time and timezone. Show will_happen to the user word for word; call again with confirmation only after they say yes."""
+        """Schedules a draft, or moves a scheduled post to a new time, at scheduled_for or the account's next free slot (next_open_slot=true). The post publishes automatically at that time. The first call schedules nothing and returns needs_confirmation, will_happen (account, weekday, date, time and timezone) and confirmation; scheduling happens only on a second call with that confirmation."""
         return await act("schedule_post", post_id=post_id, idempotency_key=idempotency_key, scheduled_for=scheduled_for, timezone=timezone, next_open_slot=next_open_slot or None, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Unschedule post", annotations=WRITE)
     async def unschedule_post(post_id: PostId, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Take a post off the schedule. It becomes a draft and keeps its text and media."""
+        """Takes a post off the schedule. It becomes a draft and keeps its text and media."""
         return await act("unschedule_post", post_id=post_id, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Publish post now", annotations=PUBLIC)
     async def publish_post_now(post_id: PostId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Publish a post to its network right now. This is public and cannot be undone from here. Use only when the user explicitly asked to publish this post now. The first call publishes nothing: it returns needs_confirmation and will_happen. Show will_happen to the user word for word; call again with confirmation only after they say yes."""
+        """Publishes a post to its network immediately. Publishing is public and cannot be undone from here. The first call publishes nothing and returns needs_confirmation, will_happen and confirmation; publishing happens only on a second call with that confirmation."""
         return await act("publish_post_now", post_id=post_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Delete post", annotations=PUBLIC)
     async def delete_post(post_id: PostId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Delete a post from drafts and the calendar. A post already published stays on the network. Use only when the user asked to delete or remove this post. The first call deletes nothing: it returns needs_confirmation and will_happen. Call again with confirmation only after the user says yes."""
+        """Deletes a post from drafts and the calendar. A post already published stays on the network. The first call deletes nothing and returns needs_confirmation, will_happen and confirmation; deletion happens only on a second call with that confirmation."""
         return await act("delete_post", post_id=post_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Copy post to network", annotations=WRITE)
     async def copy_post_to_network(post_id: PostId, network: Network, idempotency_key: UUID, account: Account | None = None, account_id: AccountId | None = None) -> dict:
-        """Make a copy of an unscheduled draft for another network (LinkedIn, X or Instagram) as its own draft, sharing the same media. Schedule the copy separately."""
+        """Copies an unscheduled draft to another network (LinkedIn, X or Instagram) as its own draft, sharing the same media. The copy is scheduled separately."""
         return await act("copy_post_to_network", post_id=post_id, network=network, account=account, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="List recordings", annotations=READ)
     async def list_recordings(account_id: AccountId | None = None) -> dict:
-        """List the account's recent recordings with status and the clips each produced: clip id, title, post text, video link, design, and the id and status of the clip's post in Scheduling. Read-only."""
+        """The account's recent recordings with status and the clips each produced: clip id, title, post text, video link, design, and the id and status of the clip's post in Scheduling. Reads only."""
         return await act("list_recordings", account_id=account_id)
 
     @server.tool(title="Get recording", annotations=READ)
     async def get_recording(recording_id: RecordingId, account_id: AccountId | None = None) -> dict:
-        """Read one recording and its clips with their live scheduling status. Read-only."""
+        """One recording and its clips with their live scheduling status. Reads only."""
         return await act("get_recording", recording_id=recording_id, account_id=account_id)
 
     @server.tool(title="Add recording", annotations=WRITE)
     async def add_recording(media_url: Annotated[str, Field(max_length=2000, description="Public https link that points directly at a video or audio file, up to 1 GB.")], idempotency_key: UUID, title: Annotated[str, Field(max_length=255)] = "", instruction: Annotated[str, Field(max_length=4000, description="Optional guidance for the edit, such as which topics to cut clips from.")] = "", account_id: AccountId | None = None) -> dict:
-        """Bring in an existing video or audio file by direct link as a new recording and start editing it into clips. Counts against the account's recording allowance. Editing takes several minutes; check progress with get_recording."""
+        """Brings in an existing video or audio file from a direct link as a new recording and starts editing it into clips, which takes several minutes. Counts against the account's recording allowance. Returns the new recording's id and status."""
         return await act("add_recording", timeout=300.0, media_url=media_url, title=title or None, instruction=instruction or None, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Recut recording", annotations=WRITE)
     async def recut_recording(recording_id: RecordingId, instruction: Annotated[str, Field(min_length=1, max_length=4000)], idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Cut a fresh set of clips from a recording following a new instruction (for example different topics or a different focus). Existing clips and their posts are kept. Counts against the account's edited-clip allowance."""
+        """Cuts a fresh set of clips from a recording following a new instruction, such as different topics or focus. Existing clips and their posts are kept. Counts against the account's edited-clip allowance."""
         return await act("recut_recording", recording_id=recording_id, instruction=instruction, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Retry recording", annotations=WRITE)
     async def retry_recording(recording_id: RecordingId, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Run a recording again after it failed or stalled."""
+        """Runs a recording's editing again after it failed or stalled."""
         return await act("retry_recording", recording_id=recording_id, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Remove recording", annotations=PUBLIC)
     async def remove_recording(recording_id: RecordingId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Remove a recording and stop any editing in progress. Posts already created from its clips stay in Scheduling. Use only when the user asked to remove this recording. The first call removes nothing: it returns needs_confirmation and will_happen. Call again with confirmation only after the user says yes."""
+        """Removes a recording and stops any editing in progress. Posts already created from its clips stay in Scheduling. The first call removes nothing and returns needs_confirmation, will_happen and confirmation; removal happens only on a second call with that confirmation."""
         return await act("remove_recording", recording_id=recording_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Start browser recording", annotations=READ)
     async def start_browser_recording(account_id: AccountId | None = None) -> dict:
-        """Start a new camera or microphone recording: returns record_url, the ProducerSpark recorder page for the user to open in their browser, and started_at. Show record_url as a link, then call wait_for_recording with started_at so the new recording is picked up without the user reporting back. Nothing is recorded or changed by this call."""
+        """Opens a new camera or microphone recording session in the browser: returns record_url, the ProducerSpark recorder page for the user to open, and started_at, which identifies recordings made after it. Nothing is recorded or changed by this call."""
         return await act("start_browser_recording", account_id=account_id)
 
     @server.tool(title="Wait for recording", annotations=READ)
     async def wait_for_recording(since: Annotated[str, Field(max_length=40, description="The started_at value from start_browser_recording.")], timeout_seconds: Annotated[int, Field(ge=0, le=50)] = 45, account_id: AccountId | None = None) -> dict:
-        """Wait for the recording the user is making in the browser. Returns status found with the recording as soon as one made after since exists, or status waiting when the window ends: call again while the user is still recording, and stop if they say they are not going to. A found recording may still be editing; follow it with get_recording. Read-only."""
+        """Waits for a recording the user is making in the browser. Returns status found with the recording as soon as one made after since exists, or status waiting when the wait window ends. A found recording may still be editing. Reads only."""
         for check in range(timeout_seconds // RECORDING_POLL_SECONDS + 1):
             if check:
                 await asyncio.sleep(RECORDING_POLL_SECONDS)
@@ -161,35 +161,35 @@ def register(server, api) -> None:
 
     @server.tool(title="List recording designs", annotations=READ)
     async def list_recording_designs(account_id: AccountId | None = None) -> dict:
-        """List the designs (templates) available for clips, for video and for audio recordings, and which one new recordings use by default. Read-only."""
+        """The designs (templates) available for clips, for video and for audio recordings, and which one new recordings use by default. Reads only."""
         return await act("list_recording_designs", account_id=account_id)
 
     @server.tool(title="Set default recording design", annotations=WRITE)
     async def set_default_recording_design(design_id: DesignId, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Choose the design new recordings will use. Existing clips are not changed."""
+        """Sets the design new recordings use. Existing clips are not changed."""
         return await act("set_default_recording_design", design_id=design_id, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Change clip design", annotations=WRITE)
     async def change_clip_design(clip_id: ClipId, design_id: DesignId, idempotency_key: UUID, confirmation: Confirmation | None = None, account_id: AccountId | None = None) -> dict:
-        """Re-render one clip in a different design (template) after recording. The current video stays in place until the new one is ready, then the clip's draft post is updated. If the clip's post is scheduled, the first call changes nothing and returns needs_confirmation and will_happen, because the post comes off the schedule: show will_happen, and call again with confirmation after the user says yes. The result's unscheduled_post gives the time it had; when get_recording shows the new video is ready, offer to schedule it again. A published clip cannot be changed."""
+        """Re-renders one clip in a different design (template). The current video stays in place until the new one is ready, then the clip's draft post is updated. A published clip cannot be changed. If the clip's post is scheduled, it comes off the schedule: the first call then changes nothing and returns needs_confirmation, will_happen and confirmation, the change happens only on a second call with that confirmation, and unscheduled_post gives the time it had."""
         return await act("change_clip_design", clip_id=clip_id, design_id=design_id, idempotency_key=idempotency_key, account_id=account_id, confirmation=confirmation)
 
     @server.tool(title="Update clip text", annotations=WRITE)
     async def update_clip_text(clip_id: ClipId, text: Caption, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Change the post text that goes with a clip. If the clip already has a post in Scheduling, that post's text is changed (a scheduled post keeps its time)."""
+        """Changes the post text that goes with a clip. If the clip already has a post in Scheduling, that post's text changes too (a scheduled post keeps its time)."""
         return await act("update_clip_text", clip_id=clip_id, text=text, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Send clip to scheduling", annotations=WRITE)
     async def send_clip_to_scheduling(clip_id: ClipId, idempotency_key: UUID, account_id: AccountId | None = None) -> dict:
-        """Create the clip's draft post in Scheduling, or bring back the draft if it was deleted. Does not schedule or publish it."""
+        """Creates the clip's draft post in Scheduling, or brings back the draft if it was deleted. Does not schedule or publish it."""
         return await act("send_clip_to_scheduling", clip_id=clip_id, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Get email sequence", annotations=READ)
     async def get_email_sequence(campaign_id: ListId | None = None, account_id: AccountId | None = None) -> dict:
-        """Read the Email Agent's sequence for a golden list: each email's day, subject and body in order, plus whether sending is on and the enrolled, sent and replied counts. Read-only."""
+        """The Email Agent's sequence for a Golden List: each email's day, subject and body in order, plus whether sending is on and the enrolled, sent and replied counts. Reads only."""
         return await act("get_email_sequence", campaign_id=campaign_id, account_id=account_id)
 
     @server.tool(title="Pause Email Agent", annotations=WRITE)
     async def pause_email_agent(idempotency_key: UUID, campaign_id: ListId | None = None, account_id: AccountId | None = None) -> dict:
-        """Stop the Email Agent sending for a golden list. Enrolled people keep their place. Nothing is sent or deleted. For a campaign, start_campaign_sending switches it back on."""
+        """Stops the Email Agent sending for a Golden List. Enrolled people keep their place. Nothing is sent or deleted."""
         return await act("pause_email_agent", campaign_id=campaign_id, idempotency_key=idempotency_key, account_id=account_id)

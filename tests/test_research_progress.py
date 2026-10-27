@@ -116,7 +116,8 @@ class ResearchProgressTests(unittest.IsolatedAsyncioTestCase):
         tool = next(tool for tool in await server.list_tools() if tool.name == "wait_for_task")
         self.assertEqual(tool.title, "Check research progress")
         self.assertEqual(tool.inputSchema["properties"]["timeout_seconds"]["default"], 10)
-        self.assertIn("AFTER each response", tool.description)
+        self.assertIn("polling window of at most 10 seconds", tool.description)
+        self.assertIn("between waits, give a brief user-facing update", server.instructions)
         self.assertIn("never silently chain waits", server.instructions.lower())
 
     def test_business_and_conference_coverage_changes_are_meaningful(self):

@@ -44,20 +44,20 @@ def register(server, api) -> None:
 
     @server.tool(title="Record in chat", annotations=SHOWN, meta=RECORDER_UI)
     async def record_in_chat(title: Annotated[str, Field(max_length=255)] = "", instruction: Annotated[str, Field(max_length=4000, description="Optional guidance for the edit, such as which topics to cut clips from.")] = "", account_id: AccountId | None = None) -> str:
-        """Show a recorder inside this chat so the user can record a new video or audio take with their camera and microphone. The user presses record, then Use this recording, and it is saved to their account and edited into clips. The recorder itself shows editing progress and plays the finished clips, and shares the recording's id with you, so do not ask the user to report back; when they next write, use get_recording or list_recordings for the details. Use this first whenever the user wants to record. Calling it records nothing by itself. If the user says no recorder appeared, or prefers the browser, use start_browser_recording instead."""
+        """Shows a recorder inside the chat for recording a new video or audio take with the camera and microphone. The user presses record, then Use this recording; the take is saved to their account and edited into clips. The recorder shows editing progress, plays the finished clips and reports the recording's id back. Calling this records nothing by itself."""
         return "The recorder is shown in the chat. Tell the user to record there and press Use this recording. If no recorder appeared for them, use start_browser_recording instead."
 
     @server.tool(title="Show recording", annotations=SHOWN, meta=RECORDER_UI)
     async def show_recording(recording_id: RecordingId, account_id: AccountId | None = None) -> str:
-        """Play a recording's clips as video inside this chat, each with its title and post text. Use this whenever the user wants to see, watch or review a clip or a recording, and after a recording finishes editing, instead of giving a link to the video. Take recording_id from list_recordings. Changes nothing."""
+        """Plays a recording's clips as video inside the chat, each with its title and post text. Changes nothing."""
         return "The recording's clips are playing in the chat. Do not also paste video links."
 
     @server.tool(title="Start recording upload", annotations=WRITE, meta=APP_ONLY)
     async def create_recording_upload(origin: Annotated[str, Field(max_length=200)], content_type: Annotated[str, Field(max_length=100)], idempotency_key: UUID, file_name: Annotated[str, Field(max_length=255)] = "", account_id: AccountId | None = None) -> dict:
-        """Used by the in-chat recorder itself to reserve storage for the take it is about to upload. Not for direct use: to record, call record_in_chat."""
+        """Reserves storage for a take the in-chat recorder is about to upload. Called by the recorder itself."""
         return await act("start_chat_recording", origin=origin, content_type=content_type, file_name=file_name, idempotency_key=idempotency_key, account_id=account_id)
 
     @server.tool(title="Finish recording upload", annotations=WRITE, meta=APP_ONLY)
     async def finish_recording_upload(upload_id: Annotated[str, Field(max_length=200)], idempotency_key: UUID, title: Annotated[str, Field(max_length=255)] = "", instruction: Annotated[str, Field(max_length=4000)] = "", account_id: AccountId | None = None) -> dict:
-        """Used by the in-chat recorder itself to save the take it uploaded as a new recording and start editing. Counts against the account's recording allowance. Not for direct use: to record, call record_in_chat."""
+        """Saves a take the in-chat recorder uploaded as a new recording and starts editing it. Counts against the account's recording allowance. Called by the recorder itself."""
         return await act("finish_chat_recording", upload_id=upload_id, title=title, instruction=instruction, idempotency_key=idempotency_key, account_id=account_id)

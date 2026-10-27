@@ -89,7 +89,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(tools), TASK_TOOL_NAMES)
         tool = tools["create_business_research_request"]
         self.assertIn("any industry and role", tool.description)
-        self.assertIn("Dell", tool.description)
+        self.assertIn("CIO", tool.description)
         self.assertTrue(tool.annotations.idempotentHint)
         self.assertFalse(tool.annotations.readOnlyHint)
         schema = tool.inputSchema
@@ -118,19 +118,19 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("person_locations", spec["properties"])
         self.assertIn("per_company_count", spec["properties"])
         self.assertIn("company_scope", spec["properties"])
-        self.assertIn("same background interpretation as email", tool.description)
-        self.assertIn("original customer request verbatim", tool.description)
-        self.assertIn("never overrides the original question", tool.description)
-        self.assertIn("never company headquarters as personal residence", tool.description)
+        self.assertIn("the backend interprets count", tool.description)
+        self.assertIn("original request verbatim", tool.description)
+        self.assertIn("never override the request", tool.description)
+        self.assertIn("headquarters is never treated as a person's location", tool.description)
         self.assertNotIn("Perplexity", tool.description)
         self.assertIsNone(spec["properties"]["person_locations"]["default"])
 
     async def test_named_speakers_use_individual_enrichment_with_conference_context(self):
         from uuid import uuid4
         tools = {tool.name: tool for tool in await task_schemas()}
-        description = tools['create_business_research_request'].description
-        self.assertIn('one individual request per person', description)
-        self.assertIn('never concatenate names', description.lower())
+        from somanylemons_mcp.task_bridge import SCHEMA_SERVER
+        self.assertIn('one individual request per person', SCHEMA_SERVER.instructions)
+        self.assertIn('never concatenate names', SCHEMA_SERVER.instructions.lower())
         calls = []
         def handler(request):
             calls.append(json.loads(request.content))
@@ -215,8 +215,8 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(deep["email_delivery"], {"status": "sent"})
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(tools["deep_search"].inputSchema["required"], ["goal_id"])
-        self.assertIn("possible is a profile that could not be confirmed", tools["deep_search"].description)
-        self.assertIn("coverage.deep_search", tools["find_people"].description)
+        self.assertIn("possible (an unconfirmed profile: free, no email", tools["deep_search"].description)
+        self.assertIn("deep_search (people it could not place)", tools["find_people"].description)
         self.assertNotIn("Apollo", tools["deep_search"].description)
 
     async def test_full_list_pulls_everyone_the_first_search_listed_and_returns_the_whole_list(self):
@@ -244,7 +244,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((full["coverage"], full["email_delivery"]), (coverage, {"status": "sent"}))
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(tools["full_list"].inputSchema["required"], ["goal_id"])
-        self.assertIn("call full_list with this goal_id", tools["find_people"].description)
+        self.assertIn("full_list (everyone who matched", tools["find_people"].description)
         self.assertNotIn("Apollo", tools["full_list"].description)
 
     async def test_declining_a_deep_search_emails_the_first_results_without_searching(self):
