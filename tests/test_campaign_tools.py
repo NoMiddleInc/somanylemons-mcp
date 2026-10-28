@@ -9,7 +9,7 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "set_signal_emails", "clear_signal_emails", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence", "review_prospect", "find_lookalikes")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "set_signal_emails", "clear_signal_emails", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence", "review_prospect", "find_lookalikes", "add_prospect_signal")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
@@ -76,7 +76,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
                          {"campaign_id", "name", "objective", "targeting", "signals", "offering", "messaging",
-                          "review_mode", "min_score", "website_visitors"})
+                          "review_mode", "min_score", "website_visitors", "ai_first_email", "webhook_url"})
         self.assertEqual(tools["add_campaign_signal"].inputSchema["required"], ["campaign_id", "text"])
         self.assertEqual(tools["update_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key", "text"])
         self.assertEqual(tools["delete_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key"])

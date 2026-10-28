@@ -1129,13 +1129,15 @@ def create_server(api: TaskApiClient) -> FastMCP:
         review_mode: Annotated[bool | None, Field(description="True: each researched prospect waits on the Golden List until approved with review_prospect before any outreach. False: enrollment needs no approval (the default).")] = None,
         min_score: Annotated[float | None, Field(ge=0, le=4, description="Fit (0 to 1) plus intent (0 to 3) a prospect needs before enrollment; 0 switches it off. Anyone below it stays on the list but is not enrolled.")] = None,
         website_visitors: Annotated[bool | None, Field(description="True: the campaign gets a visitor key and a script (visitor_snippet in the result) for the customer's own website; the companies visiting it are then sourced as prospects, one search per sweep, one credit per person found. False switches it off; the key is kept.")] = None,
+        ai_first_email: Annotated[bool | None, Field(description="True: for each prospect with a signal found, a whole first email is written from their evidence, the offering and the messaging instructions, and takes Email 1 when their signal has no emails of its own. False (the default): only the {{signal_line}} is written.")] = None,
+        webhook_url: Annotated[str | None, Field(max_length=500, description="An https address that receives signed JSON events (prospect.researched, prospect.signal, prospect.added); the result's research_options.webhook_secret verifies the X-ProducerSpark-Signature header (sha256 HMAC of '<timestamp>.<body>'). Empty switches it off.")] = None,
     ) -> dict:
-        """Changes a campaign's name, targeting, signals, offering, objective or messaging, or its review_mode, min_score and website_visitors; fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). Returns research_options (review_mode, min_score) and waiting_review (how many prospects wait for approval). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
+        """Changes a campaign's name, targeting, signals, offering, objective or messaging, or its review_mode, min_score, website_visitors, ai_first_email and webhook_url; fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). Returns research_options (review_mode, min_score) and waiting_review (how many prospects wait for approval). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "targeting": targeting,
             "signals": signals, "offering": offering, "messaging": messaging,
         }.items() if value is not None}
-        options = {key: value for key, value in {"review_mode": review_mode, "min_score": min_score, "website_visitors": website_visitors}.items() if value is not None}
+        options = {key: value for key, value in {"review_mode": review_mode, "min_score": min_score, "website_visitors": website_visitors, "ai_first_email": ai_first_email, "webhook_url": webhook_url}.items() if value is not None}
         if options:
             body["research_options"] = options
         return with_campaign_link(
@@ -1246,6 +1248,21 @@ def create_server(api: TaskApiClient) -> FastMCP:
                 f"/api/v1/agent-tasks/campaigns/{campaign_id}/prospects/{candidate_id}/review",
                 body={"decision": decision},
             )
+        )
+
+    @server.tool(title="Add prospect signal", annotations=SAVE)
+    async def add_prospect_signal(
+        campaign_id: PositiveId,
+        candidate_id: Annotated[str, Field(min_length=1, max_length=255, description="The prospect's candidate_id from get_prospect_intelligence or signal_search rows.")],
+        intent: Annotated[str, Field(min_length=1, max_length=600, description="What happened, in a sentence, for example 'Booked a demo from the pricing page'.")],
+        keyword: Annotated[str, Field(min_length=1, max_length=60, description="A short label for the signal, for example demo_booked; one signal per person and keyword.")],
+        source_url: Annotated[str, Field(max_length=500, description="A link to the record or page behind it, when there is one.")] = "",
+    ) -> dict:
+        """Records a first-party signal the customer's own system knows about a Golden List person: it joins their research as a found signal with the intent as evidence, becomes their strongest signal, reworks their scores, writes their {{signal_line}} for it, and the campaign's webhook hears prospect.signal. Review mode applies. Returns created (false when that keyword was already recorded for the person) and the person's research row. Sends nothing. 400 carries a plain reason; 404 means the campaign is unknown or archived."""
+        return await api.request(
+            "POST",
+            f"/api/v1/agent-tasks/campaigns/{campaign_id}/prospects/{candidate_id}/signals",
+            body={"intent": intent, "keyword": keyword, "source_url": source_url},
         )
 
     @server.tool(title="Find lookalikes", annotations=SAVE)
