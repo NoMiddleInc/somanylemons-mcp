@@ -1126,12 +1126,18 @@ def create_server(api: TaskApiClient) -> FastMCP:
         signals: CampaignSignals | None = None,
         offering: CampaignOffering | None = None,
         messaging: CampaignMessaging | None = None,
+        review_mode: Annotated[bool | None, Field(description="True: each researched prospect waits on the Golden List until approved with review_prospect before any outreach. False: enrollment needs no approval (the default).")] = None,
+        min_score: Annotated[float | None, Field(ge=0, le=4, description="Fit (0 to 1) plus intent (0 to 3) a prospect needs before enrollment; 0 switches it off. Anyone below it stays on the list but is not enrolled.")] = None,
+        website_visitors: Annotated[bool | None, Field(description="True: the campaign gets a visitor key and a script (visitor_snippet in the result) for the customer's own website; the companies visiting it are then sourced as prospects, one search per sweep, one credit per person found. False switches it off; the key is kept.")] = None,
     ) -> dict:
-        """Changes a campaign's name, targeting, signals, offering, objective or messaging; fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
+        """Changes a campaign's name, targeting, signals, offering, objective or messaging, or its review_mode, min_score and website_visitors; fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). Returns research_options (review_mode, min_score) and waiting_review (how many prospects wait for approval). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "targeting": targeting,
             "signals": signals, "offering": offering, "messaging": messaging,
         }.items() if value is not None}
+        options = {key: value for key, value in {"review_mode": review_mode, "min_score": min_score, "website_visitors": website_visitors}.items() if value is not None}
+        if options:
+            body["research_options"] = options
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
         )
@@ -1227,13 +1233,43 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "coverage": result.get("coverage", {}),
         })
 
+    @server.tool(title="Review prospect", annotations=SAVE)
+    async def review_prospect(
+        campaign_id: PositiveId,
+        candidate_id: Annotated[str, Field(min_length=1, max_length=255, description="The prospect's candidate_id from get_prospect_intelligence or signal_search rows.")],
+        decision: Annotated[Literal["approve", "reject"], Field(description="approve releases a prospect waiting for review for enrollment; reject removes them from the Golden List.")],
+    ) -> dict:
+        """Decides one prospect held by a campaign's review mode: approve lets them be enrolled, reject removes them from the Golden List. Returns the campaign with waiting_review and view_in_producerspark. Enrolls and sends nothing itself. 400 carries a plain reason; 404 means the campaign is unknown or archived."""
+        return with_campaign_link(
+            await api.request(
+                "POST",
+                f"/api/v1/agent-tasks/campaigns/{campaign_id}/prospects/{candidate_id}/review",
+                body={"decision": decision},
+            )
+        )
+
+    @server.tool(title="Find lookalikes", annotations=SAVE)
+    async def find_lookalikes(
+        campaign_id: PositiveId,
+        seeds: Annotated[str, Field(min_length=1, max_length=2000, description="The customer's best customers in their own words: company names, or people and their companies.")],
+        count: Annotated[int, Field(ge=1, le=100)] = 25,
+    ) -> dict:
+        """Keeps the customer's best customers on the campaign (lookalike_seeds in research_options) and starts one people search for people like them who match the targeting: the same kinds of roles at the same kinds of companies, skipping the customers named. The people found with an email join the Golden List and are researched like everyone else; the search charges one credit per person delivered. Returns the campaign with view_in_producerspark. 400 carries a plain reason; 404 means the campaign is unknown or archived."""
+        return with_campaign_link(
+            await api.request(
+                "POST",
+                f"/api/v1/agent-tasks/campaigns/{campaign_id}/lookalikes",
+                body={"seeds": seeds, "count": count},
+            )
+        )
+
     @server.tool(title="Get prospect intelligence", annotations=READ)
     async def get_prospect_intelligence(
         campaign_id: PositiveId,
-        status: Annotated[str | None, Field(description="Filters rows to one state: ready, no_signal, queued, running, held or failed. Omitted: all rows.")] = None,
+        status: Annotated[str | None, Field(description="Filters rows to one state: ready, no_signal, queued, running, held, failed or could_not_check. Omitted: all rows.")] = None,
         limit: Annotated[int, Field(ge=1, le=500)] = 100,
     ) -> dict:
-        """The signal research and custom emails already on a campaign's Golden List, newest first, with counts (ready, no_signal, queued, running, held, failed, and pending prospects not yet researched), optionally filtered by status. Rows have the same shape as signal_search rows. Reads only; starts no research."""
+        """The signal research and custom emails already on a campaign's Golden List, newest first, with counts (ready, no_signal, queued, running, held, failed, could_not_check, and pending prospects not yet researched), optionally filtered by status. Rows have the same shape as signal_search rows and carry scores (fit 0 to 1, intent 0 to 3, total, each with its reason), review (waiting or approved under review mode), fresh (false once older than 90 days) and enrollment_block (why the person is not enrolled now, or null). Reads only; starts no research."""
         params = {"status": status, "limit": limit}
         data = await api.request(
             "GET", f"/api/v1/agent-tasks/campaigns/{campaign_id}/intelligence",
