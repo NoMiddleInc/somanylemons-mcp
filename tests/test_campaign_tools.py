@@ -61,7 +61,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools["activate_campaign"].annotations.destructiveHint)
         self.assertEqual(set(tools["create_campaign"].inputSchema["required"]), {"idempotency_key", "targeting"})
         self.assertIn("required before activation", tools["create_campaign"].description)
-        self.assertIn("Needs targeting, signals and offering", tools["activate_campaign"].description)
+        self.assertIn("Needs targeting and at least one signal that finds people", tools["activate_campaign"].description)
         self.assertTrue(tools["check_campaign_item"].annotations.readOnlyHint)
         self.assertEqual(set(tools["check_campaign_item"].inputSchema["required"]), {"field", "text"})
         self.assertNotIn("list_campaign_signal_suggestions", tools)
