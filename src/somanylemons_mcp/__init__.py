@@ -1,3 +1,3 @@
 """ProducerSpark MCP Server: AI-powered content creation via Model Context Protocol."""
 
-__version__ = "0.9.26"
+__version__ = "0.9.27"

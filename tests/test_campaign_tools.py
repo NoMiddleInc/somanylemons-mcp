@@ -397,6 +397,9 @@ class CampaignEmailToolTests(CampaignToolTests):
         self.assertEqual(set(tools["start_campaign_sending"].inputSchema["properties"]), {"campaign_id", "confirmation"})
         self.assertEqual(set(tools["save_campaign_sequence"].inputSchema["required"]), {"campaign_id", "steps"})
         self.assertIn("emails real prospects", tools["start_campaign_sending"].description)
+        self.assertIn("LinkedIn-only sequence (no emails) sends no email", tools["start_campaign_sending"].description)
+        steps = tools["save_campaign_sequence"].inputSchema["properties"]["steps"]["description"]
+        self.assertIn("at least one email or a LinkedIn connection request", steps)
 
     async def test_get_campaign_email_reads_the_email_step_with_a_link(self):
         calls, result = await self._call("get_campaign_email", {"campaign_id": 12}, {"data": EMAIL})
