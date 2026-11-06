@@ -15,7 +15,7 @@ BusinessField = Literal[
     "action", "fit", "id", "notes", "linkedin_status", "field_provenance", "email_candidates",
     "recorded_organizer_email", "requested_company_identity_hints", "organizer_company", "organizer_title",
     "why_selected", "business_email", "linkedin_url", "company_website", "enrichment_date",
-    "email_verification_status", "session",
+    "email_verification_status", "session", "mobile_phone", "phone_status", "phone_dnc",
 ]
 GEOGRAPHY_FIELDS = {"company_city", "company_state", "company_country", "company_location", "raw_address",
                     "person_city", "person_state", "person_country", "person_location", "person_geography_source"}
@@ -127,6 +127,7 @@ def saved_business_answer(task, result, *, contact_page, source_page):
         "email_source", "email_source_url", "email_observed_at", "enrichment_status",
         "enrichment_source", "enriched_on", "fit", "reason", "uncertainty", "email_content_hash", "provider_email_status",
         "researchedOn", "employees", "action", "organizer_company", "organizer_title", "recorded_organizer_email", "requested_company_name",
+        "mobile_phone", "phone_status", "phone_dnc", "phone_confidence", "phone_source", "phone_date",
     }
     result["contacts"] = []
     for row in rows[(contact_page - 1) * 5:contact_page * 5]:

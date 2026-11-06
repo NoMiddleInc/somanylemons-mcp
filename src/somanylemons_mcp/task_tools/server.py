@@ -468,6 +468,40 @@ COULD_NOT_FINISH = (
 )
 
 
+PHONE_FIELDS = ("mobile_phone", "phone_status", "phone_dnc", "phone_confidence", "phone_source", "phone_date")
+PHONE_ROW_FIELDS = ("name", "title", "company", "email", "linkedin", *PHONE_FIELDS)
+PHONE_ROW_LIMIT = 100
+
+
+def phone_cost(status: dict) -> dict:
+    """What a mobile number lookup costs and what the account has, as the backend states it."""
+    return {key: status.get(key) for key in ("eligible", "without_record", "credits_per_number", "max_credits", "credits_left", "cost_note")}
+
+
+def phone_lookup_offer(status: dict) -> str:
+    """The lookup a confirmation would start, in plain words with its cost."""
+    eligible = status.get("eligible") or 0
+    if not eligible:
+        return "Nobody here has a contact database record to look a mobile number up in, so nothing would be charged."
+    people = "1 person" if eligible == 1 else f"{eligible} people"
+    return (
+        f"Look up mobile numbers in the contact database for {people}. Each mobile number found costs "
+        f"{status.get('credits_per_number')} credits, at most {status.get('max_credits')} credits; people "
+        "with no mobile number found are free. Every number comes with its Do Not Call flag."
+    )
+
+
+async def phone_rows(api, goal_id, golden_list_id) -> list[dict]:
+    """The people that had a lookup, with their numbers and Do Not Call flags."""
+    if goal_id is not None:
+        people = (await api.request("GET", f"/api/v1/agent-tasks/{goal_id}")).get("people") or []
+    else:
+        listed = await api.request("GET", "/api/v1/agent-tasks/golden-lists/read", params={"campaign_id": golden_list_id})
+        people = listed.get("rows") or []
+    return [{key: person.get(key) for key in PHONE_ROW_FIELDS if key in person}
+            for person in people if isinstance(person, dict) and person.get("phone_status")][:PHONE_ROW_LIMIT]
+
+
 def with_site_link(goal_id, result: dict) -> dict:
     """Lead the result with the line the reply must end on, so the person knows where to go."""
     page = search_page(goal_id)
@@ -825,6 +859,47 @@ def create_server(api: TaskApiClient) -> FastMCP:
             "credits": result.get("credits"),
             "email_delivery": result.get("delivery", {}),
         })
+
+    @server.tool(title="Find mobile numbers", annotations=WRITE)
+    async def find_mobile_numbers(
+        goal_id: PositiveId | None = None,
+        campaign_id: PositiveId | None = None,
+        confirm: bool = False,
+        idempotency_key: UUID | None = None,
+    ) -> dict:
+        """Looks up mobile phone numbers in the contact database for the people of a finished find_people search or other task (goal_id), or of a campaign's Golden List (campaign_id). Each mobile number found costs credits_per_number credits (8); people with no mobile number, or no contact database record, cost nothing and are marked unavailable. A call without confirm=true looks nothing up and returns needs_confirmation, will_happen (who would be looked up and the most it can cost) and the account's credits_left. With confirm=true the lookup starts and the call returns within about three minutes with status finished or still_running and the people's rows: mobile_phone, phone_status (a number's status, unavailable or lookup pending), phone_dnc (true when the number is on the Do Not Call list, false when checked and absent, null when not checked), phone_confidence, phone_source and phone_date. A repeat call while a lookup runs never starts or charges a second one. status upgrade_required means credits are used up; upgrade_url is then the plans page. No prospect outreach."""
+        if (goal_id is None) == (campaign_id is None):
+            raise TaskApiError("Give exactly one of goal_id or campaign_id.")
+        path = (
+            f"/api/v1/agent-tasks/{goal_id}/find-phones"
+            if goal_id is not None
+            else f"/api/v1/agent-tasks/campaigns/{campaign_id}/find-phones"
+        )
+        source = {"goal_id": goal_id} if goal_id is not None else {"campaign_id": campaign_id}
+        status = await api.request("GET", path)
+        if not confirm:
+            return {**source, "needs_confirmation": True, "will_happen": phone_lookup_offer(status), **phone_cost(status)}
+        key = str(idempotency_key or uuid4())
+        try:
+            status = await api.request("POST", path, body={"idempotency_key": key})
+        except TaskApiError as error:
+            held = upgrade_required(error)
+            if held is None:
+                raise
+            return {**held, **source, "rows": []}
+        deadline = time.monotonic() + 180
+        while (status.get("run") or {}).get("running") and time.monotonic() < deadline:
+            await asyncio.sleep(5)
+            status = await api.request("GET", path)
+        run = status.get("run") or {}
+        return {
+            **source,
+            "idempotency_key": key,
+            "status": "still_running" if run.get("running") else "finished",
+            "run": run,
+            **phone_cost(status),
+            "rows": await phone_rows(api, goal_id, status.get("golden_list_id")),
+        }
 
     @server.tool(title="Request business research", annotations=WRITE)
     async def create_business_research_request(

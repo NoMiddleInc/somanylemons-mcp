@@ -92,7 +92,10 @@ RESULT_RULES = (
     "still_running, call the same tool again with the same idempotency_key or goal_id. When coverage "
     "offers full_list or deep_search, offer it and run it only after the user agrees. If credits are "
     "used up (upgrade_required, credits.exhausted or held_for_credits), say so and give upgrade_url; "
-    "do not retry. Greet the user by get_started's first_name and offer only the agents it lists."
+    "do not retry. Greet the user by get_started's first_name and offer only the agents it lists. "
+    "For mobile or phone numbers, call find_mobile_numbers without confirm, tell the user "
+    "will_happen (the per-number credit cost), and call it with confirm=true only after they agree. "
+    "Show phone_dnc beside every number: a number on the Do Not Call list is marked as such."
 )
 
 server = Server(
