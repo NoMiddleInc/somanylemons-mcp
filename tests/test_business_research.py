@@ -207,7 +207,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
                 "deep_search", {"goal_id": searched["goal_id"]}, api_url="https://example.com",
                 api_key="customer", transport=httpx.MockTransport(handler)))
         self.assertEqual(searched["coverage"]["deep_search"], offer)
-        self.assertEqual(calls[1:], [("POST", "/api/v1/agent-tasks/7/deep-search"), ("GET", "/api/v1/agent-tasks/9")])
+        self.assertEqual(calls[1:], [("POST", "/api/v1/agent-tasks/7/deep-search"), ("GET", "/api/v1/agent-tasks/9/progress"), ("GET", "/api/v1/agent-tasks/9")])
         self.assertEqual((deep["goal_id"], deep["source_goal_id"], deep["status"]), (9, 7, "completed"))
         self.assertEqual([row["match"] for row in deep["rows"]], ["confirmed", "possible"])
         self.assertEqual(deep["rows"][0]["provider_person_id"], "p1")
@@ -237,7 +237,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             full = rendered(await invoke_task(
                 "full_list", {"goal_id": 7}, api_url="https://example.com", api_key="customer",
                 transport=httpx.MockTransport(handler)))
-        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/7/full-list"), ("GET", "/api/v1/agent-tasks/12")])
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/7/full-list"), ("GET", "/api/v1/agent-tasks/12/progress"), ("GET", "/api/v1/agent-tasks/12")])
         self.assertEqual((full["goal_id"], full["source_goal_id"], full["status"]), (12, 7, "completed"))
         self.assertEqual([row["name"] for row in full["rows"]], ["Kevin Lanzer", "Megan Hodge"])
         self.assertEqual(full["rows"][0]["provider_person_id"], "p1")
@@ -307,7 +307,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
             result = rendered(await invoke_task(
                 "find_people", {"request": question, "idempotency_key": key}, api_url="https://example.com",
                 api_key="customer", transport=httpx.MockTransport(handler)))
-        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search"), ("GET", "/api/v1/agent-tasks/7")])
+        self.assertEqual(calls, [("POST", "/api/v1/agent-tasks/quick-search"), ("GET", "/api/v1/agent-tasks/7/progress"), ("GET", "/api/v1/agent-tasks/7")])
         self.assertEqual((result["goal_id"], result["status"], result["rows"]), (7, "completed", rows))
         self.assertEqual(result["email_delivery"], {"status": "sent"})
         self.assertEqual(result["blocked_reason"], "")

@@ -89,7 +89,8 @@ OVERVIEW = (
 RESULT_RULES = (
     "Show find_people rows as a contact table even when cards appear, and end every reply that "
     "reports a search with the result's reply_must_end_with line. While a result's status is "
-    "still_running, call the same tool again with the same idempotency_key or goal_id. When coverage "
+    "still_running, tell the user in one short line what its progress.message says, then call the "
+    "same tool again with the same idempotency_key or goal_id; the search keeps running in between. When coverage "
     "offers full_list or deep_search, offer it and run it only after the user agrees. If credits are "
     "used up (upgrade_required, credits.exhausted or held_for_credits), say so and give upgrade_url; "
     "do not retry. Greet the user by get_started's first_name and offer only the agents it lists. "

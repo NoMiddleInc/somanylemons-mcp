@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import ResourceLink, ToolAnnotations
 from pydantic import BaseModel, Field, JsonValue
@@ -466,6 +466,90 @@ COULD_NOT_FINISH = (
     "complete and to try again in a few minutes. Do not call the tool again for it now: every new "
     "call starts another search."
 )
+# How long one call follows a people search before handing back where it stands. Short enough
+# that the person hears what is happening; the search keeps running in between calls.
+SEARCH_WAIT_SECONDS = 30
+PROGRESS_POLL_SECONDS = 1.5
+
+
+def search_progress(goal_id, progress: dict | None) -> dict:
+    """What the person can be told while a search runs: the backend's own line and counts."""
+    counts = (progress or {}).get("progress") or {}
+    elapsed = (progress or {}).get("elapsed_seconds")
+    message = counts.get("message") or (progress or {}).get("notice") or "Still searching"
+    if elapsed:
+        message = f"{message} ({elapsed} seconds so far)"
+    return {
+        "goal_id": goal_id,
+        "stage": counts.get("stage") or (progress or {}).get("stage") or "",
+        "message": message,
+        "elapsed_seconds": elapsed,
+        "found": counts.get("found"),
+        "with_email": counts.get("with_email"),
+        "requested": counts.get("requested"),
+        "candidates_screened": counts.get("candidates_screened"),
+    }
+
+
+def next_step_line(tool: str, key: str) -> str:
+    return (
+        f"The search is still running on ProducerSpark. Tell the user in one short line what "
+        f"progress.message says, then call {tool} again with the same {key} for the results. "
+        "Never start a new search for the same request and never stop before the rows arrive."
+    )
+
+
+async def report_progress(ctx: Context | None, progress: dict) -> None:
+    """Send the stage to a client that asked for progress notifications; others hear nothing."""
+    if ctx is None:
+        return
+    try:
+        ctx.request_context
+    except ValueError:
+        return
+    await ctx.report_progress(progress["found"] or 0, progress["requested"] or None, progress["message"])
+
+
+async def follow_search(api: TaskApiClient, goal: dict, *, ctx: Context | None = None, wait_seconds: float = SEARCH_WAIT_SECONDS) -> tuple[dict, dict | None]:
+    """Follow one people search for a bounded window.
+
+    Asks the light progress read every couple of seconds and reads the full task only once it
+    has finished. Returns the task as last read and the latest progress, or None when the
+    search finished within the window. A backend without the progress read is followed through
+    the full task instead.
+    """
+    deadline = time.monotonic() + wait_seconds
+    progress = None
+    while goal.get("state") not in FINISHED_SEARCH_STATES:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(PROGRESS_POLL_SECONDS, remaining))
+        try:
+            progress = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}/progress")
+        except TaskApiError as error:
+            if "HTTP 404" not in str(error):
+                raise
+            progress = None
+        if progress is None or progress.get("finished", True):
+            # Finished, or a read that does not say: the full task settles it.
+            goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
+            continue
+        await report_progress(ctx, search_progress(goal["id"], progress))
+    if goal.get("state") in FINISHED_SEARCH_STATES:
+        return goal, None
+    return goal, progress or {"state": goal.get("state")}
+
+
+def search_status(goal: dict, progress: dict | None, *, tool: str, key: str) -> dict:
+    """The status fields of a search reply: finished, or still running with where it stands."""
+    if goal.get("state") in FINISHED_SEARCH_STATES:
+        return {"status": goal["state"]}
+    return {
+        "status": "still_running",
+        "progress": search_progress(goal["id"], progress),
+        "next_step": next_step_line(tool, key),
+    }
 
 
 PHONE_FIELDS = ("mobile_phone", "phone_status", "phone_dnc", "phone_confidence", "phone_source", "phone_date")
@@ -536,7 +620,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         api,
         "ProducerSpark Tasks",
         instructions=(
-            "For a new find-people or contact request (up to 200 people, any role, industry or location, including N people at each named company), call find_people first with the original question verbatim: it returns the contacts in the same call, usually within 20 to 90 seconds. Present its rows in the contact table, end the reply with the reply_must_end_with line the result gives, add Fit or Unverified notes only when a row lists them, and state coverage when fewer rows returned than requested or not_found_in_provider is non-empty; an unverified_suggestion is a name to check, never a finding. Use create_business_research_request instead only for more than 200 people, an explicitly requested emailed Excel workbook or background task, or when find_people returns nothing useful. A request for a conference's speakers or attendees also goes to find_people first, with the user's request verbatim and without looking the names up yourself: the search reads the event's own published speaker pages and adds the people it finds to any names supplied. That is deep research and can take several minutes: when a result carries a notice, tell the user what it says and keep calling with the same idempotency_key. Report coverage.event (people read on the event's pages, supplied names listed there, people not looked up) and say plainly that attendee lists are not published, so the rows are published speakers. "
+            "For a new find-people or contact request (up to 200 people, any role, industry or location, including N people at each named company), call find_people first with the original question verbatim. Each call returns within about 30 seconds: the contacts when the search has finished (most finish in 20 to 60 seconds), otherwise status still_running with progress and next_step. Then tell the user in one short line what progress.message says and call find_people again with the same idempotency_key; the search keeps running in between and the repeat call never starts a second one. Present its rows in the contact table, end the reply with the reply_must_end_with line the result gives, add Fit or Unverified notes only when a row lists them, and state coverage when fewer rows returned than requested or not_found_in_provider is non-empty; an unverified_suggestion is a name to check, never a finding. Use create_business_research_request instead only for more than 200 people, an explicitly requested emailed Excel workbook or background task, or when find_people returns nothing useful. A request for a conference's speakers or attendees also goes to find_people first, with the user's request verbatim and without looking the names up yourself: the search reads the event's own published speaker pages and adds the people it finds to any names supplied. That is deep research and can take several minutes: when a result carries a notice, tell the user what it says and keep calling with the same idempotency_key. Report coverage.event (people read on the event's pages, supplied names listed there, people not looked up) and say plainly that attendee lists are not published, so the rows are published speakers. "
             "Signals: when the user asks to research signals, buying signals or intelligence on people or companies on their Golden List, or for the custom emails written from that research, call signal_search with the request verbatim (campaign_id from list_campaigns when they name a campaign); it returns rows as they finish and keeps the same search on repeat calls with the same idempotency_key. To read research already done, call get_prospect_intelligence. "
             "When coverage.full_list.people is above coverage.returned and coverage.full_list_run is not true, the search returned only part of who matched: after the rows, ask whether they want everyone, and call full_list with that goal_id once they agree. "
             "When coverage.deep_search is present, the search left people it could not place: show the rows first, then offer a deep search in one or two sentences, giving how many people it covers (deep_search.eligible, of whom deep_search.missing_email_only are already listed and only lack an email), about how long it takes (deep_search.estimated_seconds), the most it can cost (deep_search.max_credits; say it adds no credits when that is 0) and that only new people it confirms are charged, deep_search.credits_per_find credits each. Call deep_search with that goal_id only after the user agrees, or straight away when their request already asked to find everyone or be thorough. While that offer is open the results email is held (email_delivery.status held_for_deep_search) so the user gets one email at the end with the workbook attached: say so, and if they decline the deep search call deep_search with decline=true so the current results are emailed. "
@@ -763,10 +847,11 @@ def create_server(api: TaskApiClient) -> FastMCP:
     @server.tool(title="Find people", annotations=WRITE, meta=PEOPLE_UI)
     async def find_people(
         request: Annotated[str, Field(min_length=1, max_length=10000)],
+        ctx: Context,
         idempotency_key: UUID | None = None,
         config_id: PositiveId | None = None,
     ) -> dict:
-        """Fast people search for any role, industry or location, taking the request in the user's own words. It runs as its own task on the account and returns the contacts in this call when ready, usually within 20 to 90 seconds; while it runs, status is still_running and a repeat call with the same idempotency_key returns the same search. An open search returns up to 200 contacts; a search that names companies covers up to 100 of them. A conference speaker or attendee request also reads the event's published pages and can take several minutes, with a notice in the result meanwhile. Rows carry name, title, company, business email with its saved verification status, LinkedIn, location, fit, why and anything unverified. It filters on title, seniority, person and company location, industry, company size, named companies, the technologies a company uses (HubSpot, Salesforce, Applied Epic and most named software) and the roles it is hiring for; any other condition is judged from each record and listed as unverified when the record cannot confirm it. coverage.filters lists the technologies and hiring_titles that filtered the search and untracked_technologies it could not filter on. coverage reports requested versus returned, named employers with no contact record, per_company_default (when the request gave no number), count_step (when the search was sized first at no charge and paused), full_list (everyone who matched, with estimated_credits) and deep_search (people it could not place). status upgrade_required, credits.exhausted or coverage.held_for_credits above 0 mean the account's free prospects or credits are used up; upgrade_url is then the plans page. could_not_finish means the search failed on ProducerSpark's side. credits.remaining gives what is left. The account owner is emailed a summary with the workbook attached. Each result has view_in_producerspark (this search's page with its Excel download) and reply_must_end_with (that link as a ready line). In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
+        """Fast people search for any role, industry or location, taking the request in the user's own words. It runs as its own task on the account and this call returns within about 30 seconds: the contacts when the search has finished (most finish in 20 to 60 seconds), otherwise status still_running with progress (its message names the stage, how many of the requested people are found and the seconds so far, in one line for the person waiting) and next_step; a repeat call with the same idempotency_key returns the same search, never a second one, and the search keeps running in between. An open search returns up to 200 contacts; a search that names companies covers up to 100 of them. A conference speaker or attendee request also reads the event's published pages and can take several minutes, with a notice in the result meanwhile. Rows carry name, title, company, business email with its saved verification status, LinkedIn, location, fit, why and anything unverified. It filters on title, seniority, person and company location, industry, company size, named companies, the technologies a company uses (HubSpot, Salesforce, Applied Epic and most named software) and the roles it is hiring for; any other condition is judged from each record and listed as unverified when the record cannot confirm it. coverage.filters lists the technologies and hiring_titles that filtered the search and untracked_technologies it could not filter on. coverage reports requested versus returned, named employers with no contact record, per_company_default (when the request gave no number), count_step (when the search was sized first at no charge and paused), full_list (everyone who matched, with estimated_credits) and deep_search (people it could not place). status upgrade_required, credits.exhausted or coverage.held_for_credits above 0 mean the account's free prospects or credits are used up; upgrade_url is then the plans page. could_not_finish means the search failed on ProducerSpark's side. credits.remaining gives what is left. The account owner is emailed a summary with the workbook attached. Each result has view_in_producerspark (this search's page with its Excel download) and reply_must_end_with (that link as a ready line). In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
         body = {"request": request, "idempotency_key": str(idempotency_key or uuid4())}
         if config_id is not None:
             body["config_id"] = config_id
@@ -777,10 +862,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
             if held is None:
                 raise
             return {**held, "idempotency_key": body["idempotency_key"], "rows": [], "coverage": {}}
-        deadline = time.monotonic() + 210
-        while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
-            await asyncio.sleep(1)
-            goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
+        goal, progress = await follow_search(api, goal, ctx=ctx)
         result = goal.get("quick_search") or {}
         blocked = next((task.get("blocked_reason") for task in goal.get("tasks") or [] if task.get("blocked_reason")), "")
         return with_site_link(goal["id"], {
@@ -792,8 +874,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
             ),
             "goal_id": goal["id"],
             "idempotency_key": body["idempotency_key"],
-            "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
-            "notice": result.get("notice", ""),
+            **search_status(goal, progress, tool="find_people", key="idempotency_key"),
+            "notice": result.get("notice") or (progress or {}).get("notice", ""),
             "rows": result.get("rows", []),
             "coverage": result.get("coverage", {}),
             "credits": result.get("credits"),
@@ -801,8 +883,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
         })
 
     @server.tool(title="Run deep search", annotations=WRITE, meta=PEOPLE_UI)
-    async def deep_search(goal_id: PositiveId, decline: bool = False) -> dict:
-        """Slower second pass over the people a find_people search (its goal_id) could not place: it retries other spellings of each name, then the web, and returns only the additions, usually within a few minutes. Each row has match: confirmed (a contact record has the requested name and employer; costs credits_per_find credits) or possible (an unconfirmed profile: free, no email, a name to check rather than a finding). A row's listed_name is the person it replaces from the first results. coverage gives confirmed, possible, not_found, still_without_email and credits_charged; credits.remaining gives what is left. One search has one deep search, so a repeat call while status is still_running never starts or charges a second. decline=true searches and charges nothing and emails the first results as they stand (status results_emailed). status upgrade_required or coverage.held_for_credits above 0 mean credits are used up; upgrade_url is the plans page. The account owner is emailed a summary with the updated workbook. Each result has view_in_producerspark and reply_must_end_with. In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
+    async def deep_search(goal_id: PositiveId, ctx: Context, decline: bool = False) -> dict:
+        """Slower second pass over the people a find_people search (its goal_id) could not place: it retries other spellings of each name, then the web, and returns only the additions, usually within a few minutes. Each call returns within about 30 seconds: the additions when it has finished, otherwise status still_running with progress (a one-line message for the person waiting) and next_step, and a repeat call with the same goal_id returns the same deep search. Each row has match: confirmed (a contact record has the requested name and employer; costs credits_per_find credits) or possible (an unconfirmed profile: free, no email, a name to check rather than a finding). A row's listed_name is the person it replaces from the first results. coverage gives confirmed, possible, not_found, still_without_email and credits_charged; credits.remaining gives what is left. One search has one deep search, so a repeat call while status is still_running never starts or charges a second. decline=true searches and charges nothing and emails the first results as they stand (status results_emailed). status upgrade_required or coverage.held_for_credits above 0 mean credits are used up; upgrade_url is the plans page. The account owner is emailed a summary with the updated workbook. Each result has view_in_producerspark and reply_must_end_with. In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
         try:
             goal = await api.request(
                 "POST", f"/api/v1/agent-tasks/{goal_id}/deep-search", body={"decline": True} if decline else None
@@ -820,15 +902,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
                 "coverage": {},
                 "email_delivery": (goal.get("quick_search") or {}).get("delivery", {}),
             }
-        deadline = time.monotonic() + 210
-        while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
-            await asyncio.sleep(1)
-            goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
+        goal, progress = await follow_search(api, goal, ctx=ctx)
         result = goal.get("deep_search") or {}
         return with_site_link(goal["id"], {
             "goal_id": goal["id"],
             "source_goal_id": goal_id,
-            "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
+            **search_status(goal, progress, tool="deep_search", key="goal_id"),
             "rows": result.get("rows", []),
             "coverage": result.get("coverage", {}),
             "credits": result.get("credits"),
@@ -836,8 +915,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
         })
 
     @server.tool(title="Get full list", annotations=WRITE, meta=PEOPLE_UI)
-    async def full_list(goal_id: PositiveId) -> dict:
-        """Everyone a find_people search (its goal_id) matched, when it returned only part of them: reruns the same request for everyone who matched, up to 200 people per company, and returns the complete list in the find_people shape, usually within one to three minutes. The earlier full_list figure counted matches before screening, so the result is usually somewhat smaller (coverage.returned against coverage.full_list.people). People already delivered are not charged again. One search has one full list, so a repeat call while status is still_running never starts or charges a second. status upgrade_required, credits.exhausted or coverage.held_for_credits above 0 mean credits are used up; upgrade_url is the plans page. coverage.deep_search lists people it could not place. The account owner is emailed a summary with the workbook. Each result has view_in_producerspark and reply_must_end_with. In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
+    async def full_list(goal_id: PositiveId, ctx: Context) -> dict:
+        """Everyone a find_people search (its goal_id) matched, when it returned only part of them: reruns the same request for everyone who matched, up to 200 people per company, and returns the complete list in the find_people shape, usually within one to three minutes. Each call returns within about 30 seconds: the list when it has finished, otherwise status still_running with progress (a one-line message for the person waiting) and next_step, and a repeat call with the same goal_id returns the same list. The earlier full_list figure counted matches before screening, so the result is usually somewhat smaller (coverage.returned against coverage.full_list.people). People already delivered are not charged again. One search has one full list, so a repeat call while status is still_running never starts or charges a second. status upgrade_required, credits.exhausted or coverage.held_for_credits above 0 mean credits are used up; upgrade_url is the plans page. coverage.deep_search lists people it could not place. The account owner is emailed a summary with the workbook. Each result has view_in_producerspark and reply_must_end_with. In supporting chats the people also appear as cards with headshots; the cards carry no emails. No prospect outreach."""
         try:
             goal = await api.request("POST", f"/api/v1/agent-tasks/{goal_id}/full-list")
         except TaskApiError as error:
@@ -845,15 +924,12 @@ def create_server(api: TaskApiClient) -> FastMCP:
             if held is None:
                 raise
             return {**held, "source_goal_id": goal_id, "rows": [], "coverage": {}}
-        deadline = time.monotonic() + 210
-        while goal.get("state") not in FINISHED_SEARCH_STATES and time.monotonic() < deadline:
-            await asyncio.sleep(1)
-            goal = await api.request("GET", f"/api/v1/agent-tasks/{goal['id']}")
+        goal, progress = await follow_search(api, goal, ctx=ctx)
         result = goal.get("quick_search") or {}
         return with_site_link(goal["id"], {
             "goal_id": goal["id"],
             "source_goal_id": goal_id,
-            "status": goal["state"] if goal.get("state") in FINISHED_SEARCH_STATES else "still_running",
+            **search_status(goal, progress, tool="full_list", key="goal_id"),
             "rows": result.get("rows", []),
             "coverage": result.get("coverage", {}),
             "credits": result.get("credits"),
