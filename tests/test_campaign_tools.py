@@ -400,7 +400,7 @@ EMAIL = {"campaign_id": 12, "name": "Texas producers", "golden_list_id": 44,
          "ready_to_send": False}
 EMAIL_TOOLS = ("get_campaign_email", "save_campaign_sequence", "enroll_campaign_people", "start_campaign_sending",
                "pause_campaign_sending", "get_campaign_results", "get_email_sending_settings",
-               "update_email_sending_settings")
+               "update_email_sending_settings", "get_website_visitors")
 
 
 class CampaignEmailToolTests(CampaignToolTests):
@@ -410,7 +410,7 @@ class CampaignEmailToolTests(CampaignToolTests):
             self.assertIn(name, TASK_TOOL_NAMES)
             self.assertNotIn("apollo", tools[name].description.lower())
             self.assertNotIn("—", tools[name].description)
-        for name in ("get_campaign_email", "get_campaign_results", "get_email_sending_settings"):
+        for name in ("get_campaign_email", "get_campaign_results", "get_email_sending_settings", "get_website_visitors"):
             self.assertTrue(tools[name].annotations.readOnlyHint, name)
         self.assertFalse(tools["start_campaign_sending"].annotations.readOnlyHint)
         self.assertEqual(set(tools["start_campaign_sending"].inputSchema["properties"]), {"campaign_id", "confirmation"})
@@ -485,5 +485,22 @@ class CampaignEmailToolTests(CampaignToolTests):
         ):
             calls, _ = await self._call(name, arguments, {"data": {}})
             self.assertEqual((calls[0].method, calls[0].url.path), (method, path), name)
+        calls, _ = await self._call("get_website_visitors", {"days": 30}, {"data": {}})
+        self.assertEqual((calls[0].method, calls[0].url.path, calls[0].url.params.get("days")),
+                         ("GET", "/api/v1/agent-tasks/website-visitors", "30"))
         calls, _ = await self._call("update_email_sending_settings", {"send_on_weekends": True}, {"data": {}})
         self.assertEqual((calls[0].method, json.loads(calls[0].content)), ("PATCH", {"send_on_weekends": True}))
+
+
+class WebsiteVisitorToolTests(CampaignToolTests):
+    async def test_website_visitors_is_found_for_the_question_claude_could_not_answer(self):
+        """Robbie, 2026-11-08: "Which companies visited my website this week?" got Leadfeeder."""
+        tools = {tool.name: tool for tool in await task_schemas()}
+        description = tools["get_website_visitors"].description
+        self.assertIn("which companies visited my website", description)
+        self.assertIn("setup", description)
+        self.assertEqual(tools["get_website_visitors"].inputSchema["properties"]["days"]["default"], 7)
+
+    async def test_find_people_says_it_reads_linkedin_post_engagers(self):
+        tools = {tool.name: tool for tool in await task_schemas()}
+        self.assertIn("commented on or reacted to", tools["find_people"].description)
