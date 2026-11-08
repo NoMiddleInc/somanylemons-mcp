@@ -77,7 +77,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
                          {"campaign_id", "name", "objective", "targeting", "signals", "offering", "messaging",
-                          "review_mode", "min_score", "website_visitors", "ai_first_email", "webhook_url"})
+                          "review_mode", "min_score", "ai_first_email", "webhook_url"})
         self.assertEqual(tools["add_campaign_signal"].inputSchema["required"], ["campaign_id", "text"])
         self.assertEqual(tools["update_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key", "text"])
         self.assertEqual(tools["delete_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key"])
@@ -400,7 +400,7 @@ EMAIL = {"campaign_id": 12, "name": "Texas producers", "golden_list_id": 44,
          "ready_to_send": False}
 EMAIL_TOOLS = ("get_campaign_email", "save_campaign_sequence", "enroll_campaign_people", "start_campaign_sending",
                "pause_campaign_sending", "get_campaign_results", "get_email_sending_settings",
-               "update_email_sending_settings", "get_website_visitors")
+               "update_email_sending_settings")
 
 
 class CampaignEmailToolTests(CampaignToolTests):
@@ -410,7 +410,7 @@ class CampaignEmailToolTests(CampaignToolTests):
             self.assertIn(name, TASK_TOOL_NAMES)
             self.assertNotIn("apollo", tools[name].description.lower())
             self.assertNotIn("—", tools[name].description)
-        for name in ("get_campaign_email", "get_campaign_results", "get_email_sending_settings", "get_website_visitors"):
+        for name in ("get_campaign_email", "get_campaign_results", "get_email_sending_settings"):
             self.assertTrue(tools[name].annotations.readOnlyHint, name)
         self.assertFalse(tools["start_campaign_sending"].annotations.readOnlyHint)
         self.assertEqual(set(tools["start_campaign_sending"].inputSchema["properties"]), {"campaign_id", "confirmation"})
@@ -485,21 +485,19 @@ class CampaignEmailToolTests(CampaignToolTests):
         ):
             calls, _ = await self._call(name, arguments, {"data": {}})
             self.assertEqual((calls[0].method, calls[0].url.path), (method, path), name)
-        calls, _ = await self._call("get_website_visitors", {"days": 30}, {"data": {}})
-        self.assertEqual((calls[0].method, calls[0].url.path, calls[0].url.params.get("days")),
-                         ("GET", "/api/v1/agent-tasks/website-visitors", "30"))
         calls, _ = await self._call("update_email_sending_settings", {"send_on_weekends": True}, {"data": {}})
         self.assertEqual((calls[0].method, json.loads(calls[0].content)), ("PATCH", {"send_on_weekends": True}))
 
 
 class WebsiteVisitorToolTests(CampaignToolTests):
-    async def test_website_visitors_is_found_for_the_question_claude_could_not_answer(self):
-        """Robbie, 2026-11-08: "Which companies visited my website this week?" got Leadfeeder."""
+    async def test_website_visitors_is_no_longer_offered(self):
+        """Robbie, 2026-11-08: website visitors was hidden everywhere; about 2% of visits were real."""
         tools = {tool.name: tool for tool in await task_schemas()}
-        description = tools["get_website_visitors"].description
-        self.assertIn("which companies visited my website", description)
-        self.assertIn("setup", description)
-        self.assertEqual(tools["get_website_visitors"].inputSchema["properties"]["days"]["default"], 7)
+        self.assertNotIn("get_website_visitors", tools)
+        self.assertNotIn("get_website_visitors", TASK_TOOL_NAMES)
+        self.assertNotIn("website_visitors", tools["update_campaign"].inputSchema["properties"])
+        for tool in tools.values():
+            self.assertNotIn("website visit", tool.description.lower(), tool.name)
 
     async def test_find_people_says_it_reads_linkedin_post_engagers(self):
         tools = {tool.name: tool for tool in await task_schemas()}
