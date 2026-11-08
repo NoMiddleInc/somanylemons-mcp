@@ -9,7 +9,7 @@ from somanylemons_mcp.task_tools.server import create_server
 from somanylemons_mcp.task_tools.client import TaskApiClient, TaskApiConfig
 
 KEY = "33333333-3333-4333-8333-333333333333"
-TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence", "review_prospect", "find_lookalikes", "add_prospect_signal")
+TOOLS = ("list_campaigns", "create_campaign", "update_campaign", "add_people_to_campaign", "add_campaign_signal", "update_campaign_signal", "delete_campaign_signal", "check_campaign_item", "activate_campaign", "signal_search", "get_prospect_intelligence", "review_prospect", "find_lookalikes", "add_prospect_signal")
 
 CAMPAIGN = {
     "id": 12, "name": "Texas producers", "objective": "Get leads",
@@ -169,6 +169,25 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["view_in_producerspark"], "https://producerspark.com/agent/12")
         calls, _ = await self._call("update_campaign", {"campaign_id": 12, "name": "New"}, {"data": CAMPAIGN})
         self.assertEqual(json.loads(calls[0].content), {"name": "New"})
+
+    async def test_add_people_to_campaign_posts_the_search_and_choices(self):
+        added = {"campaign_id": 12, "golden_list_id": 44, "campaign_name": "Texas producers",
+                 "added": 9, "already_on_list": 0, "without_email": 0}
+        calls, result = await self._call("add_people_to_campaign", {
+            "campaign_id": 12, "goal_id": 654, "exclude_names": ["Firstclass Artists"],
+        }, {"success": True, "data": added})
+        self.assertEqual((calls[0].method, calls[0].url.path), ("POST", "/api/v1/agent-tasks/campaigns/12/people"))
+        self.assertEqual(json.loads(calls[0].content), {"goal_id": 654, "exclude_names": ["Firstclass Artists"]})
+        payload = self._payload(result)
+        self.assertEqual((payload["added"], payload["view_in_producerspark"]), (9, "https://producerspark.com/agent/12"))
+        calls, _ = await self._call("add_people_to_campaign", {"campaign_id": 12, "goal_id": 654}, {"data": added})
+        self.assertEqual(json.loads(calls[0].content), {"goal_id": 654})
+
+    async def test_add_people_to_campaign_passes_an_unknown_name_through(self):
+        with self.assertRaises(Exception) as raised:
+            await self._call("add_people_to_campaign", {"campaign_id": 12, "goal_id": 654, "names": ["Someone Else"]},
+                             {"detail": "Not in this search: Someone Else."}, status=400)
+        self.assertIn("Not in this search: Someone Else.", str(raised.exception))
 
     async def test_update_campaign_passes_the_backend_reason_through(self):
         with self.assertRaises(Exception) as raised:

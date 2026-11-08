@@ -1250,7 +1250,7 @@ def create_server(api: TaskApiClient) -> FastMCP:
         messaging: CampaignMessaging | None = None,
         name: CampaignName | None = None,
     ) -> dict:
-        """Saves a new campaign as a draft, with its own Golden List. targeting (the prospects' industry and titles) is required; signals and offering are optional here and required before activation; objective and messaging are optional. The same idempotency_key returns the campaign already saved instead of creating another. A 400 error carries a plain reason. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
+        """Saves a new campaign as a draft, with its own Golden List. targeting (the prospects' industry and titles) is required; signals and offering are optional here and required before activation; objective and messaging are optional. The same idempotency_key returns the campaign already saved instead of creating another. A 400 error carries a plain reason. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged. To put people a find_people search found on it, call add_people_to_campaign next; naming them in targeting does not add them."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "targeting": targeting,
             "signals": signals, "offering": offering, "messaging": messaging,
@@ -1283,6 +1283,19 @@ def create_server(api: TaskApiClient) -> FastMCP:
             body["research_options"] = options
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
+        )
+
+    @server.tool(title="Add people to campaign", annotations=SAVE)
+    async def add_people_to_campaign(
+        campaign_id: PositiveId,
+        goal_id: Annotated[int, Field(gt=0, description="The goal_id of a finished find_people (or other people) search.")],
+        names: Annotated[list[str] | None, Field(min_length=1, max_length=1000, description="The people from the search to add, by full name as the search returned it. Omitted: everyone it found.")] = None,
+        exclude_names: Annotated[list[str] | None, Field(max_length=1000, description="People from the search to leave out, by full name.")] = None,
+    ) -> dict:
+        """Puts the people a search found on a campaign's Golden List, the way Contacts does in the app. Works on a draft or an active campaign. People without a business email are skipped and counted in without_email; anyone already on the list stays as they are, and someone the owner removed comes back. Returns added, already_on_list and without_email. A name the search did not return is a 400 that names it, and nothing is added. Saves only: nothing is enrolled or sent. An active campaign starts its signal research on the new people; enroll_campaign_people puts them in the sequence."""
+        body = {key: value for key, value in {"goal_id": goal_id, "names": names, "exclude_names": exclude_names}.items() if value is not None}
+        return with_campaign_link(
+            {"id": campaign_id, **await api.request("POST", f"/api/v1/agent-tasks/campaigns/{campaign_id}/people", body=body)}
         )
 
     @server.tool(title="Add campaign signal", annotations=SAVE)
