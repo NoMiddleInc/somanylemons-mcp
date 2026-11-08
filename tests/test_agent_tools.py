@@ -219,3 +219,16 @@ class AgentToolTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SiteLinkTests(unittest.TestCase):
+    def test_a_search_that_ran_gets_its_link_and_a_redirect_that_ran_nothing_gets_none(self):
+        from somanylemons_mcp.task_tools.server import with_site_link
+
+        searched = with_site_link(7, {"status": "succeeded", "rows": [], "coverage": {"returned": 0}})
+        redirected = with_site_link(
+            8, {"status": "succeeded", "rows": [], "coverage": {"needs_signal": {"signal": "website_visitors"}}}
+        )
+
+        self.assertIn("task=7", searched["reply_must_end_with"])
+        self.assertEqual(redirected["reply_must_end_with"], "")
