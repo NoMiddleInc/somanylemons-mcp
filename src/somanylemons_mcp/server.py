@@ -74,14 +74,15 @@ RESEARCH_INSTRUCTIONS = RESEARCH_SKILL.split("---", 2)[2].strip()
 # every conversation needs comes first and stays short.
 OVERVIEW = (
     "ProducerSpark runs this account's agents. New or unsure user: call get_started and follow "
-    "next_step. Always show a result's view_in_producerspark or results_url as a clickable link. "
-    "People and contacts: call find_people first with "
-    "the request verbatim. Posts: list_posts, create_post, update_post, schedule_post. Recordings "
-    "and clips: record_in_chat to record, list_recordings, change_clip_design, update_clip_text. Use real ids from a list "
-    "call, never a guessed one. Publishing, scheduling, deleting a post and removing a recording "
-    "never happen on the first call: the result has needs_confirmation and will_happen. Show "
-    "will_happen to the user word for word, wait for a clear yes, then repeat the call with its "
-    "confirmation value. When a result has acting_in_account, say whose account it is."
+    "next_step. Show a result's view_in_producerspark or results_url as a link. People and "
+    "contacts, including who engaged with LinkedIn posts: find_people first with the "
+    "request verbatim. Companies visiting the user's website: get_website_visitors. Posts: "
+    "list_posts, create_post, update_post, schedule_post. Recordings: record_in_chat, "
+    "list_recordings, change_clip_design, update_clip_text. Use real ids from a list call. "
+    "Publishing, scheduling, deleting a post or removing a recording first returns "
+    "needs_confirmation and will_happen. Show will_happen word for word, "
+    "wait for a clear yes, then repeat the call with its confirmation value. When a result has "
+    "acting_in_account, say whose account it is."
 )
 
 # Usage guidance kept out of the tool descriptions, which describe only what each tool does
