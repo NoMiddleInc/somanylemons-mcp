@@ -88,7 +88,7 @@ class BusinessResearchToolsTests(unittest.IsolatedAsyncioTestCase):
         tools = {tool.name: tool for tool in await task_schemas()}
         self.assertEqual(set(tools), TASK_TOOL_NAMES)
         tool = tools["create_business_research_request"]
-        self.assertIn("any industry and role", tool.description)
+        self.assertIn("more than 200 people", tool.description)
         self.assertIn("CIO", tool.description)
         self.assertTrue(tool.annotations.idempotentHint)
         self.assertFalse(tool.annotations.readOnlyHint)

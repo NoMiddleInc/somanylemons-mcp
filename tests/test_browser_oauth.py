@@ -24,7 +24,9 @@ class BrowserAuthTests(unittest.IsolatedAsyncioTestCase):
                 (await client.get("/skills/producerspark.zip")).status_code, 200
             )
 
-    async def test_bearer_refresh_preserves_owner_but_foreign_account_fails(self):
+    async def test_bearer_refresh_and_foreign_account_each_run_with_their_own_token(self):
+        # Stateless transport: a session id carries nothing over, so a foreign account that
+        # presents another account's session id is served with its own token only.
         seen = []
 
         class Manager:
@@ -98,7 +100,7 @@ class BrowserAuthTests(unittest.IsolatedAsyncioTestCase):
                                 },
                             )
                         ).status_code,
-                        403,
+                        200,
                     )
                     self.assertEqual(
                         (
@@ -112,7 +114,7 @@ class BrowserAuthTests(unittest.IsolatedAsyncioTestCase):
                         ).status_code,
                         401,
                     )
-        self.assertEqual(seen, [("initial", True), ("refreshed", True)])
+        self.assertEqual(seen, [("initial", True), ("refreshed", True), ("foreign", True)])
         self.assertEqual(server._session_api_key.get(), "")
         self.assertFalse(server._research_only.get())
 
@@ -229,13 +231,13 @@ class RealProtocolTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn(
                         "durable research", decoded(init)["result"]["instructions"]
                     )
+                    self.assertNotIn("mcp-session-id", init.headers)
                     self.assertEqual(
                         init.headers.get("access-control-allow-origin"),
                         "https://claude.ai",
                     )
                     headers = {
                         **old,
-                        "mcp-session-id": init.headers["mcp-session-id"],
                         "mcp-protocol-version": "2025-03-26",
                     }
                     await client.post(

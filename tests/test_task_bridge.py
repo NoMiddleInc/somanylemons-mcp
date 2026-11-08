@@ -2,7 +2,6 @@ import asyncio,json,unittest
 import httpx
 from somanylemons_mcp.task_bridge import invoke_task,task_schemas,read_task_artifact
 from somanylemons_mcp.task_tools.client import TaskApiError, TaskApiClient, TaskApiConfig
-from somanylemons_mcp.remote import SessionKeyBindings
 
 class BridgeTests(unittest.IsolatedAsyncioTestCase):
  async def test_declared_targets_not_exposed_as_observed_citations(self):
@@ -426,56 +425,28 @@ class ApolloAllowanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(public_apollo_allowance(budget)["remaining_credits"], 7)
 
 
-class SessionBindingTests(unittest.TestCase):
- def test_foreign_key_and_unknown_session_rejected(self):
-  b=SessionKeyBindings();self.assertTrue(b.check('', 'owner'))
-  b.bind('known','owner');self.assertTrue(b.check('known','owner'))
-  self.assertFalse(b.check('known','other'));self.assertFalse(b.check('unknown','owner'))
-  self.assertNotIn('owner',str(b.owners))
- def test_session_capacity_is_bounded(self):
-  b=SessionKeyBindings(limit=1);b.bind('one','owner')
-  self.assertFalse(b.check('', 'other'));self.assertTrue(b.check('one','owner'))
-
- def test_expired_session_requires_initialize_and_never_rebinds(self):
-  from unittest.mock import patch
-  with patch('somanylemons_mcp.remote.time.monotonic',return_value=100):
-   b=SessionKeyBindings(ttl=10);b.bind('old-sdk-session','owner')
-  with patch('somanylemons_mcp.remote.time.monotonic',return_value=111):
-   self.assertFalse(b.check('old-sdk-session','owner'))
-   self.assertFalse(b.check('old-sdk-session','new-key'))
-   self.assertTrue(b.check('', 'new-key'))
-   self.assertNotIn('old-sdk-session',b.owners)
- def test_evicted_or_rotated_key_cannot_claim_existing_sdk_session(self):
-  b=SessionKeyBindings();b.bind('live-sdk-session','original-key')
-  self.assertFalse(b.check('live-sdk-session','rotated-key'))
-  b.owners.pop('live-sdk-session')
-  self.assertFalse(b.check('live-sdk-session','original-key'))
-  self.assertFalse(b.check('live-sdk-session','other-key'))
-
 class RemoteIsolationTests(unittest.IsolatedAsyncioTestCase):
- async def test_http_session_cannot_be_reused_with_another_key_and_context_resets(self):
+ async def test_each_request_runs_with_its_own_key_and_context_resets(self):
+  # Stateless transport: no session state is kept, so a session id from another key or an
+  # earlier deploy carries nothing over; every request runs with the key it presents.
   from unittest.mock import patch
   import somanylemons_mcp.remote as remote
   import somanylemons_mcp.server as server
   calls=[]
   class Manager:
-   def __init__(self,**kwargs):pass
+   def __init__(self,**kwargs):self.kwargs=kwargs
    async def handle_request(self,scope,receive,send):
-    calls.append(server._session_api_key.get())
-    await send({'type':'http.response.start','status':200,'headers':[(b'content-type',b'application/json'),(b'mcp-session-id',b'session-one')]})
+    calls.append((server._session_api_key.get(),scope['state']['producerspark_mcp_identity']['api_key']))
+    await send({'type':'http.response.start','status':200,'headers':[(b'content-type',b'application/json')]})
     await send({'type':'http.response.body','body':b'{}'})
   with patch.object(remote,'StreamableHTTPSessionManager',Manager):
    app=remote._create_app()
    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='https://mcp.example') as client:
-    first=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz'})
-    self.assertEqual(first.status_code,200)
-    attack=await client.post('/mcp',headers={'x-api-key':'sml_other_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
-    self.assertEqual(attack.status_code,403)
-    stale=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'previous-deploy-session'})
-    self.assertEqual(stale.status_code,404)
-    accepted=await client.post('/mcp',headers={'x-api-key':'sml_owner_abcdefghijklmnopqrstuvwxyz','mcp-session-id':'session-one'})
-    self.assertEqual(accepted.status_code,200)
-  self.assertEqual(calls,['sml_owner_abcdefghijklmnopqrstuvwxyz','sml_owner_abcdefghijklmnopqrstuvwxyz'])
+    owner='sml_owner_abcdefghijklmnopqrstuvwxyz';other='sml_other_abcdefghijklmnopqrstuvwxyz'
+    self.assertEqual((await client.post('/mcp',headers={'x-api-key':owner})).status_code,200)
+    self.assertEqual((await client.post('/mcp',headers={'x-api-key':other,'mcp-session-id':'session-one'})).status_code,200)
+    self.assertEqual((await client.post('/mcp',headers={'x-api-key':owner,'mcp-session-id':'previous-deploy-session'})).status_code,200)
+  self.assertEqual(calls,[(owner,owner),(other,other),(owner,owner)])
   self.assertEqual(server._session_api_key.get(),'')
 
 class InitializeInstructionsTests(unittest.TestCase):

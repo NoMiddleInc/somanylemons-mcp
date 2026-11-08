@@ -16,7 +16,7 @@ import argparse
 import contextlib
 import logging
 import hashlib
-import time
+import json
 import os
 import time
 from collections import defaultdict
@@ -35,72 +35,91 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # In-memory rate limiter (per-instance, no Redis needed for Cloud Run).
-# Limits connections per API key to prevent brute-force and abuse.
+# claude.ai opens a fresh MCP connection for most tool calls, so one tool call
+# arrives as about five HTTP requests (initialize, initialized, tools/list,
+# resources/list, tools/call). Tool calls carry the per-account budget; every
+# request together only has a loose abuse ceiling.
 # ---------------------------------------------------------------------------
 
 _RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX_REQUESTS = 60  # per key per window
+_RATE_LIMIT_MAX_REQUESTS = 600  # any MCP request, per key per window
+_TOOL_CALL_LIMIT = 120  # tools/call requests, per key per window
+_MAX_BODY_BYTES = 4 * 1024 * 1024
 
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
+_tool_call_buckets: dict[str, list[float]] = defaultdict(list)
 
 
-def _is_rate_limited(api_key: str) -> bool:
-    """Return True if this API key has exceeded the per-minute request limit."""
+def _is_rate_limited(api_key: str, buckets=None, limit=None, weight: int = 1) -> bool:
+    """Return True if this API key has exceeded the per-minute limit of these buckets."""
+    buckets = _rate_buckets if buckets is None else buckets
+    limit = _RATE_LIMIT_MAX_REQUESTS if limit is None else limit
     now = time.monotonic()
     api_key = hashlib.sha256(api_key.encode()).hexdigest()
     cutoff = now - _RATE_LIMIT_WINDOW
-    for key in list(_rate_buckets):
-        if not _rate_buckets[key] or _rate_buckets[key][-1] <= cutoff:
-            del _rate_buckets[key]
-    if api_key not in _rate_buckets and len(_rate_buckets) >= 4096:
+    for key in list(buckets):
+        if not buckets[key] or buckets[key][-1] <= cutoff:
+            del buckets[key]
+    if api_key not in buckets and len(buckets) >= 4096:
         return True
-    bucket = _rate_buckets[api_key]
-    # Prune old entries
-    cutoff = now - _RATE_LIMIT_WINDOW
-    _rate_buckets[api_key] = [t for t in bucket if t > cutoff]
-    bucket = _rate_buckets[api_key]
-    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+    bucket = [t for t in buckets[api_key] if t > cutoff]
+    buckets[api_key] = bucket
+    if len(bucket) + weight > limit:
         return True
-    bucket.append(now)
+    bucket.extend([now] * weight)
     return False
+
+
+def _tool_calls_in(body: bytes) -> int:
+    """How many JSON-RPC tools/call requests a POST body carries (a batch can carry several)."""
+    try:
+        message = json.loads(body or b"null")
+    except ValueError:
+        return 0
+    messages = message if isinstance(message, list) else [message]
+    return sum(1 for item in messages if isinstance(item, dict) and item.get("method") == "tools/call")
+
+
+async def _buffered(receive: Receive):
+    """Read the whole request body once and return it with a receive that replays it."""
+    chunks, size, more = [], 0, True
+    while more:
+        message = await receive()
+        if message["type"] != "http.request":
+            return None, receive
+        chunk = message.get("body", b"")
+        size += len(chunk)
+        if size > _MAX_BODY_BYTES:
+            return None, receive
+        chunks.append(chunk)
+        more = message.get("more_body", False)
+    body = b"".join(chunks)
+    replayed = False
+
+    async def replay():
+        nonlocal replayed
+        if not replayed:
+            replayed = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await receive()
+
+    return body, replay
 
 
 import somanylemons_mcp.server as _srv
 
 
-class SessionKeyBindings:
-    """Bounded credential hashes; never retain a plaintext tenant key."""
-
-    def __init__(self, limit=1024, ttl=1800):
-        self.owners = {}
-        self.limit, self.ttl = limit, ttl
-
-    def check(self, session_id, key):
-        now = time.monotonic()
-        self.owners = {sid: pair for sid, pair in self.owners.items() if pair[1] > now}
-        digest = hashlib.sha256(key.encode()).hexdigest()
-        if session_id:
-            known = self.owners.get(session_id)
-            if known is None or known[0] != digest:
-                return False
-            self.owners[session_id] = (digest, now + self.ttl)
-        return bool(session_id) or len(self.owners) < self.limit
-
-    def bind(self, session_id, key):
-        self.owners[session_id] = (
-            hashlib.sha256(key.encode()).hexdigest(),
-            time.monotonic() + self.ttl,
-        )
-
-
 def _create_app() -> ASGIApp:
     """Build the ASGI app with Streamable HTTP endpoint."""
 
-    bindings = SessionKeyBindings()
+    # Stateless: every request is served on its own, by whichever instance gets it.
+    # Session ids lived in one instance's memory, so a redeploy, a second instance or a
+    # client that dropped the id turned ordinary calls into 404 and 400 errors. The tools
+    # keep no per-session state; each request carries its own credentials.
     session_manager = StreamableHTTPSessionManager(
         app=_srv.server,
         json_response=False,
-        stateless=False,
+        stateless=True,
     )
 
     resource = "https://producerspark.com/mcp"
@@ -225,35 +244,26 @@ def _create_app() -> ASGIApp:
                 )
                 await response(scope, receive, send)
                 return
-            if _is_rate_limited(binding_key):
+            tool_calls = 0
+            if scope.get("method") == "POST":
+                body, receive = await _buffered(receive)
+                if body is None:
+                    response = JSONResponse({"error": "Request body too large or incomplete."}, status_code=413)
+                    await response(scope, receive, send)
+                    return
+                tool_calls = _tool_calls_in(body)
+            if _is_rate_limited(binding_key) or (
+                tool_calls and _is_rate_limited(
+                    binding_key, _tool_call_buckets, _TOOL_CALL_LIMIT, weight=tool_calls
+                )
+            ):
                 response = JSONResponse(
-                    {"error": "Rate limit exceeded. Max 60 requests per minute."},
+                    {"error": f"Rate limit exceeded. Max {_TOOL_CALL_LIMIT} tool calls per minute."},
                     status_code=429,
                     headers={"Retry-After": "60"},
                 )
                 await response(scope, receive, send)
                 return
-
-            session_id = request.headers.get("mcp-session-id", "")
-            if not bindings.check(session_id, binding_key):
-                # MCP clients reinitialize on 404 after an instance restart or
-                # session expiry. A 403 is reserved for a known foreign owner.
-                status = 404 if session_id and session_id not in bindings.owners else 403
-                response = JSONResponse(
-                    {
-                        "error": "MCP session is unavailable for this API key; initialize a new session."
-                    },
-                    status_code=status,
-                )
-                await response(scope, receive, send)
-                return
-
-            async def bound_send(message):
-                if message["type"] == "http.response.start":
-                    for header, value in message.get("headers", []):
-                        if header.lower() == b"mcp-session-id":
-                            bindings.bind(value.decode(), binding_key)
-                await send(message)
 
             # The SDK runs a session in a background task. Attach credentials to
             # each request's metadata so tools never retain an expired first key.
@@ -268,7 +278,7 @@ def _create_app() -> ASGIApp:
             token = _srv._session_api_key.set(client_key)
             research_token = _srv._research_only.set(research_only)
             try:
-                await session_manager.handle_request(scope, receive, bound_send)
+                await session_manager.handle_request(scope, receive, send)
             finally:
                 _srv._session_api_key.reset(token)
                 _srv._research_only.reset(research_token)

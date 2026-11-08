@@ -441,7 +441,7 @@ class FeedbackProtocolTests(unittest.IsolatedAsyncioTestCase):
                         "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                             "protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "synthetic-feedback-test", "version": "1"}}})
                     self.assertEqual(init.status_code, 200, init.text)
-                    headers = {"authorization": "Bearer synthetic_refreshed_token", "mcp-session-id": init.headers["mcp-session-id"], "mcp-protocol-version": "2025-03-26"}
+                    headers = {"authorization": "Bearer synthetic_refreshed_token", "mcp-session-id": "stale-or-foreign-session", "mcp-protocol-version": "2025-03-26"}
                     await client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
                     for index, descriptor in enumerate(task["feedback_review_snapshot"]["attachments"], 2):
                         response = await client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "id": index, "method": "resources/read", "params": {"uri": resource_uri(task, descriptor)}})
@@ -452,11 +452,10 @@ class FeedbackProtocolTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(content["mimeType"], descriptor["mime"])
                         self.assertEqual(base64.b64decode(content["blob"]), raw[descriptor["name"]])
                     before = len(forwarded)
-                    denied = await client.post("/mcp", headers={**headers, "authorization": "Bearer synthetic_foreign_token"}, json={"jsonrpc": "2.0", "id": 9, "method": "resources/read", "params": {"uri": resource_uri(task, task["feedback_review_snapshot"]["attachments"][0])}})
-                    self.assertEqual(denied.status_code, 403)
-                    self.assertEqual(len(forwarded), before)
-        self.assertEqual(len(forwarded), 6)
-        self.assertTrue(all(r.headers["x-api-key"] == "synthetic_refreshed_token" for r in forwarded))
+                    # Stateless transport: a foreign token with the same session id runs with its own token only.
+                    await client.post("/mcp", headers={**headers, "authorization": "Bearer synthetic_foreign_token"}, json={"jsonrpc": "2.0", "id": 9, "method": "resources/read", "params": {"uri": resource_uri(task, task["feedback_review_snapshot"]["attachments"][0])}})
+                    self.assertTrue(all(r.headers["x-api-key"] == "synthetic_foreign_token" for r in forwarded[before:]))
+        self.assertTrue(all(r.headers["x-api-key"] == "synthetic_refreshed_token" for r in forwarded[:before]))
         self.assertEqual(hosted._session_api_key.get(), "")
 
 
