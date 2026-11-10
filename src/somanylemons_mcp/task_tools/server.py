@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import ResourceLink, ToolAnnotations
 from pydantic import BaseModel, Field, JsonValue
@@ -22,7 +23,7 @@ from .answer_navigation import bounded_examples_and_artifacts, list_task_navigat
 from .current_answer import history_metadata, recorded_delivery_history, resolution_metadata, resolve_current_answer
 from .business_research import BusinessResearchSpec, saved_business_answer
 from .live_progress import live_update, contact_table_metadata, watch_response
-from .provider_disclosure import hide_data_provider_in_reply
+from .provider_disclosure import hide_data_provider, hide_data_provider_in_reply
 from .agent_tools import Confirmation, INSTRUCTIONS as AGENT_TOOL_INSTRUCTIONS, register as register_agent_tools
 from .people import PEOPLE_UI, register as register_people
 from .recorder import register as register_recorder
@@ -448,8 +449,16 @@ class TaskFastMCP(FastMCP):
         return await super().read_resource(uri)
 
     async def call_tool(self, name, arguments):
-        """Every tool reply leaves without the contact-data vendor's name."""
-        return hide_data_provider_in_reply(await super().call_tool(name, arguments))
+        """Every tool reply, failed ones included, leaves without the contact-data vendor's name."""
+        try:
+            reply = await super().call_tool(name, arguments)
+        except Exception as error:
+            message = str(error)
+            neutral = hide_data_provider(message)
+            if neutral == message:
+                raise
+            raise ToolError(neutral) from None
+        return hide_data_provider_in_reply(reply)
 
 
 FINISHED_SEARCH_STATES = {"completed", "needs_attention", "cancelled"}

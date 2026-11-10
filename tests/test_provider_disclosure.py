@@ -105,3 +105,36 @@ class ToolReplyTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(tool=tool.name):
                 described = json.dumps([tool.description, tool.inputSchema, tool.outputSchema])
                 self.assertNotIn("apollo", described.casefold())
+
+
+class ToolErrorDisclosureTests(unittest.IsolatedAsyncioTestCase):
+    """A failed tool call leaves without the vendor's name, like a successful one."""
+
+    async def test_tool_error_does_not_name_the_vendor(self):
+        from somanylemons_mcp.task_tools.server import TaskFastMCP
+
+        server = TaskFastMCP(None, "test")
+
+        @server.tool()
+        def fails() -> str:
+            raise RuntimeError(
+                "Apollo approval required: ApolloBillableBudgetExceeded for this query"
+            )
+
+        with self.assertRaises(Exception) as caught:
+            await server.call_tool("fails", {})
+        self.assertNotIn("apollo", str(caught.exception).casefold())
+        self.assertIn("approval required", str(caught.exception))
+
+    async def test_tool_error_without_the_vendor_is_unchanged(self):
+        from somanylemons_mcp.task_tools.server import TaskFastMCP
+
+        server = TaskFastMCP(None, "test")
+
+        @server.tool()
+        def fails() -> str:
+            raise RuntimeError("The task changed. Refresh it.")
+
+        with self.assertRaises(Exception) as caught:
+            await server.call_tool("fails", {})
+        self.assertIn("The task changed. Refresh it.", str(caught.exception))
