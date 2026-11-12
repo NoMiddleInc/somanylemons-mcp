@@ -1285,8 +1285,9 @@ def create_server(api: TaskApiClient) -> FastMCP:
         min_score: Annotated[float | None, Field(ge=0, le=4, description="Fit (0 to 1) plus intent (0 to 3) a prospect needs before enrollment; 0 switches it off. Anyone below it stays on the list but is not enrolled.")] = None,
         ai_first_email: Annotated[bool | None, Field(description="True: for each prospect with a signal found, a whole first email is written from their evidence, the offering and the messaging instructions, and takes Email 1; everyone else gets Email 1 as authored. When false (the default), Email 1 stays as authored for everyone and the {{signal_line}} placeholder carries the per-person text.")] = None,
         webhook_url: Annotated[str | None, Field(max_length=500, description="An https address that receives signed JSON events (prospect.researched, prospect.signal, prospect.added); the result's research_options.webhook_secret verifies the X-ProducerSpark-Signature header (sha256 HMAC of '<timestamp>.<body>'). Empty switches it off.")] = None,
+        daily_cap: Annotated[int | None, Field(ge=1, le=200, description="Most new people the campaign's signals add a day, 1 to 200; 50 by default. Each person added uses a credit.")] = None,
     ) -> dict:
-        """Changes a campaign's name, targeting, signals, offering, objective or messaging, or its review_mode, min_score, ai_first_email and webhook_url; fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). Returns research_options (review_mode, min_score) and waiting_review (how many prospects wait for approval). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
+        """Changes a campaign's name, targeting, signals, offering, objective or messaging, its review_mode, min_score, ai_first_email and webhook_url, or its daily_cap (new people a day); fields left out stay as they are. signals replaces the whole set, and saved signals come back in signal_items as the searches they become (one per source, each with a summary line). Returns research_options (review_mode, min_score) and waiting_review (how many prospects wait for approval). A 400 error carries a plain reason; 404 means the campaign is unknown or archived. Returns the campaign with view_in_producerspark. Saves only; nothing is searched, sent or charged."""
         body = {key: value for key, value in {
             "name": name, "objective": objective, "targeting": targeting,
             "signals": signals, "offering": offering, "messaging": messaging,
@@ -1294,6 +1295,8 @@ def create_server(api: TaskApiClient) -> FastMCP:
         options = {key: value for key, value in {"review_mode": review_mode, "min_score": min_score, "ai_first_email": ai_first_email, "webhook_url": webhook_url}.items() if value is not None}
         if options:
             body["research_options"] = options
+        if daily_cap is not None:
+            body["daily_cap"] = daily_cap
         return with_campaign_link(
             await api.request("PATCH", f"/api/v1/agent-tasks/campaigns/{campaign_id}", body=body)
         )

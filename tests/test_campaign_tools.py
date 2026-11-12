@@ -77,7 +77,7 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools["update_campaign"].inputSchema["required"], ["campaign_id"])
         self.assertEqual(set(tools["update_campaign"].inputSchema["properties"]),
                          {"campaign_id", "name", "objective", "targeting", "signals", "offering", "messaging",
-                          "review_mode", "min_score", "ai_first_email", "webhook_url"})
+                          "review_mode", "min_score", "ai_first_email", "webhook_url", "daily_cap"})
         self.assertEqual(tools["add_campaign_signal"].inputSchema["required"], ["campaign_id", "text"])
         self.assertEqual(tools["update_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key", "text"])
         self.assertEqual(tools["delete_campaign_signal"].inputSchema["required"], ["campaign_id", "signal_key"])
@@ -169,6 +169,8 @@ class CampaignToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["view_in_producerspark"], "https://producerspark.com/agent/12")
         calls, _ = await self._call("update_campaign", {"campaign_id": 12, "name": "New"}, {"data": CAMPAIGN})
         self.assertEqual(json.loads(calls[0].content), {"name": "New"})
+        calls, _ = await self._call("update_campaign", {"campaign_id": 12, "daily_cap": 120}, {"data": CAMPAIGN})
+        self.assertEqual(json.loads(calls[0].content), {"daily_cap": 120})
 
     async def test_add_people_to_campaign_posts_the_search_and_choices(self):
         added = {"campaign_id": 12, "golden_list_id": 44, "campaign_name": "Texas producers",
